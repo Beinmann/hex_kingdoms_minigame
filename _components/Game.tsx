@@ -175,12 +175,9 @@ function cancelArmy(state: GameState, armyId: string): GameState {
 }
 
 export default function Game() {
-  const [state, setState] = useState<GameState>(() => {
-    if (typeof window === 'undefined') return createInitialState(1);
-    const saved = loadSave();
-    return saved ?? createInitialState();
-  });
+  const [state, setState] = useState<GameState>(() => createInitialState(1));
   const stateRef = useRef<GameState>(state);
+  const [hydrated, setHydrated] = useState(false);
 
   const [selection, setSelection] = useState<Selection>({ kind: 'none' });
   const [paused, setPaused] = useState(false);
@@ -199,6 +196,15 @@ export default function Game() {
   }, [speed]);
 
   useEffect(() => {
+    const saved = loadSave();
+    const initial = saved ?? createInitialState();
+    stateRef.current = initial;
+    setState(initial);
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
     let raf = 0;
     let last = performance.now();
     let acc = 0;
@@ -221,11 +227,12 @@ export default function Game() {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
     writeSave(state);
-  }, [state]);
+  }, [state, hydrated]);
 
   const handleSelectBuild = useCallback((b: BuildingType) => {
     setSelection((cur) => (cur.kind === 'build' && cur.building === b ? { kind: 'none' } : { kind: 'build', building: b, sticky: false }));
