@@ -197,6 +197,7 @@ export default function SelectionPanel({
                       </Tooltip>
                     )}
                   </div>
+                  <TrainingQueue state={state} buildingId={selectedBuilding.id} />
                 </div>
               )}
             </div>
@@ -204,5 +205,35 @@ export default function SelectionPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function TrainingQueue({ state, buildingId }: { state: GameState; buildingId: string }) {
+  const orders = state.trainings.filter((t) => t.buildingId === buildingId);
+  if (orders.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <div className="text-[11px] text-zinc-500">
+        Queue <span className="text-zinc-400">({orders.length})</span>
+      </div>
+      <div className="space-y-1">
+        {orders.map((t) => {
+          const total = t.kind === 'villager' ? VILLAGER_TRAIN_TICKS : SOLDIER_TRAIN_TICKS;
+          const done = Math.max(0, total - t.ticksLeft);
+          const pct = Math.min(100, Math.max(0, (done / total) * 100));
+          return (
+            <div key={t.id} className="flex items-center gap-2 text-[11px]">
+              <span className="text-zinc-300 capitalize w-16 shrink-0">{t.kind}</span>
+              <div className="flex-1 h-1.5 rounded bg-zinc-800 overflow-hidden">
+                <div className="h-full bg-amber-500/70" style={{ width: `${pct}%` }} />
+              </div>
+              <span className="text-zinc-500 font-mono tabular-nums w-10 text-right">
+                {Math.max(0, t.ticksLeft)}t
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

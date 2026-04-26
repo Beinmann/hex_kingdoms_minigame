@@ -1,5 +1,6 @@
 'use client';
 
+import { key } from '../_lib/hex';
 import {
   BUILDING_SPEC,
   EXTRACTOR_RADIUS,
@@ -7,6 +8,7 @@ import {
   type Army,
   type BuildingType,
   type GameState,
+  type MoveCommand,
   type Resources,
   type Selection,
   type Villager,
@@ -103,6 +105,24 @@ function buildingDescription(type: BuildingType): string {
   }
 }
 
+function MoveQueueList({ queue }: { queue: MoveCommand[] }) {
+  if (queue.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <div className="text-[11px] text-zinc-500">
+        Pending moves <span className="text-zinc-400">({queue.length})</span>
+      </div>
+      <div className="flex flex-wrap gap-1 text-[11px] text-zinc-400 font-mono">
+        {queue.map((cmd, i) => (
+          <span key={i} className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800">
+            → ({cmd.destQ},{cmd.destR})
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function VillagerRow({
   villagers,
   state,
@@ -122,6 +142,7 @@ function VillagerRow({
   onMoveAll: (q: number, r: number) => void;
   onSelectBuild: (b: BuildingType) => void;
 }) {
+  const moveQueue = state.tileQueuesByOwner.player[key(q, r)] ?? [];
   const counts: Partial<Record<string, number>> = {};
   for (const v of villagers) {
     const lbl = STATUS_LABEL[v.status];
@@ -196,6 +217,7 @@ function VillagerRow({
           </Tooltip>
         </div>
       </div>
+      <MoveQueueList queue={moveQueue} />
       <div className="space-y-1">
         <div className="text-[11px] text-zinc-500">Build</div>
         <div className="flex flex-wrap gap-1">
