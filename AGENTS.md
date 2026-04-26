@@ -1,94 +1,85 @@
 # hex_kingdom — agent guide
 
-A small real-time hex RTS-lite. Read `PLAN.md` for the original design rationale; this file is the
-authoritative guide for editing code here.
+This project is in early development. Mechanics will keep changing. Treat the design as fluid; don't entrench abstractions for hypothetical future requirements.
 
-**Read order:**
+**Read order before editing:**
 1. This file.
-2. `PLAN.md` for game-design context.
-3. The module you're about to edit.
+2. `README.md` for the player-facing game model and code map.
+3. The module you're about to touch.
 
 ---
 
-## File map
+## Core abstraction — read this first
+
+A villager has **two positions**:
+
+- `q, r` — *physical* position. Where the dot is drawn. Lerped between ticks for animation.
+- `homeQ, homeR` — *logical* position. The tile they count as occupying for capacity, the `n/cap` badge, and the source side of move commands.
+
+These diverge in two cases:
+1. While `status === 'moving'`, `home` already equals the destination — even on tick zero of the move. The destination's occupancy goes up immediately.
+2. While a villager is harvesting (`work_outbound | work_gather | work_inbound`), `home` stays pinned to the producer building tile, *even when they're physically standing in a forest*. They never count as occupying the resource tile.
+
+If you're tempted to use `(q,r)` for a tile-occupancy check, you almost certainly want `(homeQ,homeR)` instead. Helpers `occupantsAt`, `capacityOf`, `isBusy` live in `_lib/villager.ts`.
+
+## Move-command queue
+
+Player movement is *tile-scoped*, not villager-scoped. `state.tileQueues['q,r']` is a FIFO of `{destQ,destR}` commands. The drainer (run before the per-villager step each tick) pairs each command with whatever non-busy villager has `home` on that source tile. Villager-level commands don't exist — that's intentional, race conditions get handled by the queue, not by a list of bound (villager, dest) pairs.
+
+Issuance does a permissive check (source has someone, dest isn't impassable, dest isn't already over cap, queue isn't longer than source population). Drainage re-validates the dest cap; if full now, the command is dropped with a toast.
+
+## State machine
+
+`VillagerStatus` in `_lib/types.ts`. `stepVillager` in `_lib/villager.ts` is the only place that transitions between statuses. Keep it that way — adding ad-hoc transitions in tick.ts or UI handlers will silently break the queue logic.
+
+`isBusy(v)` returns true for `moving | work_outbound | work_gather | work_inbound`. Queue commands only get assigned to non-busy villagers, which means `idle | arrived_pause | farming | work_pause` are the windows where a queued move can take effect.
+
+## Tick order in `advance(state)`
 
 ```
-hex_kingdom/
-├── page.tsx                    # route entry, renders <Game />
-├── PLAN.md                     # design doc
-├── AGENTS.md                   # this file
-├── _components/
-│   ├── Game.tsx                # top-level: state, tick loop, save, hotkeys, selection routing
-│   ├── Canvas.tsx              # camera-driven canvas-2D renderer + drag-rect select + interpolation
-│   └── Sidebar.tsx             # resources, build menu (with hotkeys), selection info, win/lose panel
-└── _lib/
-    ├── types.ts                # GameState + BUILDING_SPEC + constants
-    ├── hex.ts                  # axial coords, neighbours, distance, A*
-    ├── mapgen.ts               # createInitialState(seed) → GameState
-    ├── tick.ts                 # advance(state) — pure
-    ├── villager.ts             # villager state machine, chooseSource, assign/recall
-    ├── combat.ts               # resolveCombat({a},{b}) helper
-    ├── ai.ts                   # rivalDecide(state) — mutates `next` inside advance
-    ├── save.ts                 # SSR-guarded localStorage at SAVE_KEY
-    └── __tests__/              # vitest: hex / tick / combat / ai / villager
+clone → tick++
+drainMoveQueues
+tickVillagers
+tickTrainings + completeTrainings
+moveArmies
+combat (army-vs-army, lairs, army-vs-building)
+pruneDead (also evicts villagers from destroyed buildings)
+killVillagersOnHostileTiles
+rivalDecide
+recomputePop / recomputeVisibility / pruneToasts
+checkVictory
 ```
 
----
+`advance` is pure — it deep-clones first and never mutates the input.
 
-## Key invariants
+## Things you'd want to know that aren't obvious from the code
 
-- **Tick order in `advance(state)`** — pure function returning a deep clone of the next state. Steps:
-  1. `tickVillagers` — each villager runs one step of its state machine.
-  2. Training tick (decrement `ticksLeft`, then complete any reaching 0; villagers spawn at TH, soldiers at barracks).
-  3. Food consumption (1 per living entity; on shortfall, kill one villager, else one soldier).
-  4. Army movement (one tile along `path`).
-  5. Combat: army-vs-army, army-vs-lair, army-vs-building.
-  6. Prune dead armies / destroyed buildings.
-  7. Kill villagers standing on a hostile-occupied tile.
-  8. Rival AI (`rivalDecide`) — assigns idle villagers, trains, builds, recruits, raids.
-  9. Pop / popCap recompute. `pop = villagers + soldiers + trainings`. `popCap = sum of popCapDelta`.
- 10. Visibility recompute from scratch (player buildings + player armies).
- 11. Victory check (player TH gone → lost; rival TH gone → won).
-
-- **`BUILDING_SPEC` is the single source of truth** for cost, tile types, hp, popCapDelta, vision bonus, production rate, and `worksOn`. `pop` on a spec is now an *advisory* max-workers cap, not a reservation. Do not duplicate these values into UI strings or AI heuristics.
-
-- **Villagers are first-class entities** in `state.villagers`, addressable individually. `assignedTo: buildingId | null`. The state machine (`idle | walking_to_source | gathering | walking_to_dropoff | depositing | walking_to_reassignment`) is in `_lib/villager.ts`. Production happens only when a villager finishes a `depositing` cycle — there is no auto-production path.
-
-- **Tile pools deplete permanently.** `Tile.pool` lives on resource tiles seeded by `TILE_INITIAL_POOL`. When a pool hits 0, the tile is mutated to its `DEPLETED_TILE` form (forest→grass, hill→grass, mountain→hill) and the pool field is removed. Save format includes the pool.
-
-- **Camera state is Canvas-local** in a `useRef`, never in `GameState` — it must not appear in the save format. WASD / arrow keys / edge-scroll drive panning at `CAMERA_PAN_SPEED` px/s. Initial camera centres on the player TH.
-
-- **Position interpolation is purely cosmetic.** `Canvas.tsx` keeps `prevPositionsRef` (entity → previous-tick hex) and `tickStartAtRef`; the rAF loop renders entities at `lerp(prev, current, dt / tickMs)`. No interpolation state ever flows back into `GameState`.
-
-- **`visible` is `Record<string, true>`** keyed by `"q,r"` (`keyOf(coord)`), not a `Set`. JSON-serialisable so the save round-trips through localStorage without a custom replacer.
-
-- **Save key is `hex_kingdom_save_v2`.** If you change the `GameState` shape non-additively, bump the version and reset old saves on read. `loadSave` already discards v1 blobs and any save whose `mapWidth`/`mapHeight` mismatches.
-
-- **Map is a parallelogram**, axial coords `q ∈ [0, MAP_WIDTH)`, `r ∈ [0, MAP_HEIGHT)`. Pointy-top. Do not convert to offset coords — every neighbour/bounds check assumes axial. `MAP_WIDTH = 25`, `MAP_HEIGHT = 20`.
-
-- **`stateRef` in `Game.tsx` is the source of truth for the tick loop.** The `useState` mirror exists only so React re-renders on tick. Mutating handlers compute a new `GameState` and assign to both `stateRef.current` and `setState`.
-
-- **`townhall` is in `BUILDING_SPEC` but is not buildable** — it has no cost, only used at map-gen and for the victory check. Do not list it in the build menu. The TH does train villagers (`VILLAGER_COST`, `VILLAGER_TRAIN_TICKS`).
-
-- **`TrainingOrder` carries `kind: 'soldier' | 'villager'` and `buildingId`** (renamed from `barracksId`). `completeTrainings` branches on kind.
-
-- **The rival town hall is placed at map-gen.** Pop-cap and resources mirror the player's start. Mapgen also guarantees forest/hill/mountain within radius 5 of each capital so the start position isn't a lottery.
-
----
+- **Food drain is intentionally disabled.** Two `consumeFood` calls in `tick.ts` are commented out, the function is left in place. Re-enable by uncommenting if upkeep economy is reintroduced.
+- **Rival villagers are frozen.** `aiAssignIdleVillagers` in `ai.ts` is a no-op stub; `tickVillagers` skips non-player villagers. Reintroduce rival villager AI by extending the queue/state model rather than the old `assignedTo` model.
+- **Tile capacity counts player villagers only.** Soldiers and rival villagers don't currently count toward a tile's cap. If/when soldiers should respect capacity, extend `occupantsAt` to take owner+entity-type rather than baking it in.
+- **Save schema is breaking-changes-allowed.** Bump `SAVE_KEY` (`_lib/save.ts`) for any non-additive change to `GameState`. Old keys go in `LEGACY_KEYS` and are wiped on load. Don't write migrations — the user wipes saves between iterations.
+- **`BUILDING_SPEC[type].pop` is the build-time pop reservation, not a worker cap.** The worker cap lives in `TILE_CAPACITY_BY_BUILDING[type]`. Don't display `pop` as "max workers" in UI.
+- **Toasts:** push via `pushToast(state, text)` from `_lib/villager.ts`. They live on `state.notifications` (so they survive serialization / round-trip through React state), expire after `NOTIFICATION_TTL_TICKS`, and the overlay is a sibling div above the canvas in `Canvas.tsx`, not canvas-drawn.
+- **Float icons (e.g. `+1 wood` over a building)** are Canvas-local, not in `GameState` — they're spawned by detecting status transitions when a new tick arrives (see `prevVillagerSnapshotRef` in `Canvas.tsx`).
+- **`M` is context-sensitive.** Pressing `M` does nothing unless a tile is currently selected. Iron mine got remapped to `I` to free `M` up.
+- **Camera state, drag state, hover, float icons, and prev-positions are all `useRef` in Canvas.** None of them belong in `GameState` and none are saved.
+- **`stateRef` in `Game.tsx` is the source of truth for the rAF tick loop.** The `useState` mirror only exists so React re-renders. UI handlers that produce a new state must assign to *both* `stateRef.current` and `setState`.
 
 ## Verification
 
-From the repo root:
+From the repo root, every change must pass:
 
 ```bash
 npm run build   # zero type errors
-npm test        # vitest must pass
+npm test        # all vitest suites green (currently 146 tests across the repo)
 ```
 
-For UI changes, open `/projects/hex_kingdom` and play a few ticks — the canvas does not type-check, so layout regressions and broken click hit-tests must be verified by hand.
+For UI changes the canvas is not type-checked — run `npm run dev`, open `/projects/hex_kingdom`, and click around. The dev server is forgiving; the build is strict.
 
----
+## Out of scope right now
 
-## Out of scope for v1
-
-See PLAN.md "Out of scope". TL;DR: no second rival, no tier-2 buildings, no tweens, no diplomacy, no sound. Add them later only if the core loop is fun.
+- Multi-villager move commands (one move = one villager).
+- Cancelling a queued command from the UI.
+- Soldiers respecting tile capacity.
+- Rival villager AI under the new model.
+- Diplomacy, second rival, tier-2 buildings, sound. Add those later only if the core loop turns out fun.
