@@ -377,7 +377,7 @@ export default function Game() {
   }, []);
 
   const HOTKEY_TO_BUILDING: Record<string, BuildingType> = {
-    z: 'house',
+    y: 'house',
     x: 'farm',
     c: 'lumber',
     v: 'quarry',

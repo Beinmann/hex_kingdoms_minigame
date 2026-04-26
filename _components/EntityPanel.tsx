@@ -28,7 +28,7 @@ type Props = {
 };
 
 const HOTKEY_FOR: Record<BuildingType, string> = {
-  house: 'Z',
+  house: 'Y',
   farm: 'X',
   lumber: 'C',
   quarry: 'V',
