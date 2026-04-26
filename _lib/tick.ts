@@ -9,6 +9,7 @@ import {
   type Army,
   type Building,
   type Construction,
+  type ExploredTile,
   type GameState,
   type MonsterLair,
   type Owner,
@@ -321,6 +322,21 @@ function recomputeVisibility(state: GameState): void {
   state.visible = vis;
 }
 
+function recordExplored(state: GameState): void {
+  for (const t of state.tiles) {
+    const k = keyOf(t);
+    if (!state.visible[k]) continue;
+    const entry: ExploredTile = { type: t.type };
+    const b = state.buildings.find((b) => b.q === t.q && b.r === t.r);
+    if (b) entry.building = { type: b.type, owner: b.owner };
+    const c = state.constructions.find((c) => c.q === t.q && c.r === t.r);
+    if (c) entry.construction = { type: c.type, owner: c.owner };
+    const lair = state.lairs.find((l) => l.q === t.q && l.r === t.r);
+    if (lair) entry.lair = true;
+    state.explored[k] = entry;
+  }
+}
+
 function checkVictory(state: GameState): void {
   const playerTH = state.buildings.find((b) => b.owner === 'player' && b.type === 'townhall');
   const rivalTH = state.buildings.find((b) => b.owner === 'rival' && b.type === 'townhall');
@@ -356,6 +372,7 @@ export function advance(state: GameState): GameState {
 
   recomputePop(next);
   recomputeVisibility(next);
+  recordExplored(next);
   pruneToasts(next);
 
   checkVictory(next);

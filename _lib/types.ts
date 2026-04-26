@@ -137,6 +137,13 @@ export type Selection =
   | { kind: 'send'; armyId: string }
   | { kind: 'move_source'; q: number; r: number; all?: boolean };
 
+export type ExploredTile = {
+  type: TileType;
+  building?: { type: BuildingType; owner: Owner };
+  construction?: { type: BuildingType; owner: Owner };
+  lair?: true;
+};
+
 export type GameState = {
   tick: number;
   phase: GamePhase;
@@ -153,6 +160,7 @@ export type GameState = {
   rival: PlayerState;
   rivalAI: RivalAIState;
   visible: Record<string, true>;
+  explored: Record<string, ExploredTile>;
   tileQueuesByOwner: Record<'player' | 'rival', Record<string, MoveCommand[]>>;
   notifications: Notification[];
   nextId: number;

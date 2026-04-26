@@ -7,6 +7,7 @@ import {
   MAP_WIDTH,
   TILE_INITIAL_POOL,
   type Building,
+  type ExploredTile,
   type GameState,
   type MonsterLair,
   type Owner,
@@ -134,6 +135,26 @@ function computeInitialVisibility(
   return vis;
 }
 
+function computeInitialExplored(
+  visible: Record<string, true>,
+  tiles: Tile[],
+  buildings: Building[],
+  lairs: MonsterLair[],
+): Record<string, ExploredTile> {
+  const explored: Record<string, ExploredTile> = {};
+  for (const t of tiles) {
+    const k = key(t.q, t.r);
+    if (!visible[k]) continue;
+    const entry: ExploredTile = { type: t.type };
+    const b = buildings.find((b) => b.q === t.q && b.r === t.r);
+    if (b) entry.building = { type: b.type, owner: b.owner };
+    const l = lairs.find((l) => l.q === t.q && l.r === t.r);
+    if (l) entry.lair = true;
+    explored[k] = entry;
+  }
+  return explored;
+}
+
 function placeLairs(
   rng: () => number,
   tiles: Tile[],
@@ -242,6 +263,7 @@ export function createInitialState(seed: number = Date.now()): GameState {
   };
 
   const visible = computeInitialVisibility(buildings, 'player');
+  const explored = computeInitialExplored(visible, tiles, buildings, lairs);
 
   const playerVillagers = spawnInitialVillagers(playerCapital, 'player', 1);
   const rivalVillagers = spawnInitialVillagers(rivalCapital, 'rival', playerVillagers.nextId);
@@ -265,6 +287,7 @@ export function createInitialState(seed: number = Date.now()): GameState {
     rival,
     rivalAI: { nextRaidTick: 45 },
     visible,
+    explored,
     tileQueuesByOwner: { player: {}, rival: {} },
     notifications: [],
     nextId: rivalVillagers.nextId,

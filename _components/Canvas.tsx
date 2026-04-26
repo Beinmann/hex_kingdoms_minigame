@@ -323,11 +323,25 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onTileRi
         const { x, y } = axialToPixel({ q: tile.q, r: tile.r }, HEX_SIZE);
         if (x < cam.x - HEX_SIZE * 2 || x > cam.x + VIEWPORT_WIDTH + HEX_SIZE * 2) continue;
         if (y < cam.y - HEX_SIZE * 2 || y > cam.y + VIEWPORT_HEIGHT + HEX_SIZE * 2) continue;
-        const visible = cur.visible[keyOf(tile)];
+        const k = keyOf(tile);
+        const visible = cur.visible[k];
+        const explored = !visible ? cur.explored[k] : undefined;
         drawHexPath(ctx, x, y);
-        ctx.fillStyle = visible ? TILE_COLOURS[tile.type] : '#111';
-        ctx.fill();
-        ctx.strokeStyle = visible ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.04)';
+        if (visible) {
+          ctx.fillStyle = TILE_COLOURS[tile.type];
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        } else if (explored) {
+          ctx.fillStyle = TILE_COLOURS[explored.type];
+          ctx.globalAlpha = 0.4;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        } else {
+          ctx.fillStyle = '#111';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+        }
         ctx.lineWidth = 1;
         ctx.stroke();
         if (visible && tile.pool !== undefined && tile.maxPool && tile.pool < tile.maxPool) {
@@ -340,6 +354,49 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onTileRi
           ctx.fillStyle = '#fef3c7';
           ctx.fillRect(x0, y0, w * (tile.pool / tile.maxPool), h);
         }
+      }
+
+      // Remembered (out-of-vision) buildings, constructions and lairs.
+      for (const k in cur.explored) {
+        if (cur.visible[k]) continue;
+        const e = cur.explored[k];
+        if (!e.building && !e.construction && !e.lair) continue;
+        const [qStr, rStr] = k.split(',');
+        const q = Number(qStr);
+        const r = Number(rStr);
+        const { x: cx, y: cy } = axialToPixel({ q, r }, HEX_SIZE);
+        if (cx < cam.x - HEX_SIZE * 2 || cx > cam.x + VIEWPORT_WIDTH + HEX_SIZE * 2) continue;
+        if (cy < cam.y - HEX_SIZE * 2 || cy > cam.y + VIEWPORT_HEIGHT + HEX_SIZE * 2) continue;
+        ctx.globalAlpha = 0.5;
+        if (e.lair) {
+          ctx.fillStyle = '#111';
+          ctx.beginPath();
+          ctx.arc(cx, cy, HEX_SIZE * 0.45, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#f3f4f6';
+          ctx.font = `${Math.round(HEX_SIZE * 0.7)}px serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('☠', cx, cy + 1);
+        }
+        const memBuilding = e.building ?? e.construction;
+        if (memBuilding && memBuilding.type !== 'farm') {
+          ctx.fillStyle = ownerFill(memBuilding.owner);
+          ctx.beginPath();
+          ctx.arc(cx, cy, HEX_SIZE * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1;
+          if (e.construction) ctx.setLineDash([3, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#fff';
+          ctx.font = `${Math.round(HEX_SIZE * 0.6)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(BUILDING_GLYPHS[memBuilding.type], cx, cy + 1);
+        }
+        ctx.globalAlpha = 1;
       }
 
       for (const lair of cur.lairs) {

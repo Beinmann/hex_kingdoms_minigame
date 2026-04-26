@@ -66,6 +66,7 @@ checkVictory
 - **Action hotkeys (`Q W E R`) are context-sensitive.** They only fire when a tile is selected. `Q` = train (townhall) / recruit (barracks). `W` = destroy (any non-townhall building). `E` = move 1 villager. `R` = move all villagers. Build-placement keys are unconditional: `Y` house, `X` farm, `C` lumber, `V` quarry, `B` iron_mine, `N` barracks, `M` watchtower. Right-click a tile = move 1 villager from selected tile to clicked tile; Shift+right-click = move all.
 - **Camera state, drag state, hover, float icons, and prev-positions are all `useRef` in Canvas.** None of them belong in `GameState` and none are saved.
 - **`stateRef` in `Game.tsx` is the source of truth for the rAF tick loop.** The `useState` mirror only exists so React re-renders. UI handlers that produce a new state must assign to *both* `stateRef.current` and `setState`.
+- **Fog of war: `state.visible` is current sight, `state.explored` is memory.** `recordExplored` (in `tick.ts`) overwrites the per-tile snapshot every tick a tile is visible — so re-seeing a tile updates memory, while losing sight freezes the last snapshot. Memory stores stationary things only (tile type, building, construction, lair); entities and HP/pool/progress bars are visible-only. When adding new stationary map state, extend `ExploredTile` and `recordExplored` together.
 
 ## Verification
 
