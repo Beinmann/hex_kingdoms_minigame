@@ -391,6 +391,36 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onTileRi
         }
       }
 
+      for (const c of cur.constructions) {
+        if (!cur.visible[keyOf(c)]) continue;
+        const { x: cx, y: cy } = axialToPixel({ q: c.q, r: c.r }, HEX_SIZE);
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = ownerFill(c.owner);
+        ctx.beginPath();
+        ctx.arc(cx, cy, HEX_SIZE * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fbbf24';
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.font = `${Math.round(HEX_SIZE * 0.55)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(BUILDING_GLYPHS[c.type], cx, cy + 1);
+        const w = HEX_SIZE * 0.9;
+        const h = 3;
+        const x0 = cx - w / 2;
+        const y0 = cy + HEX_SIZE * 0.6;
+        const pct = Math.min(1, Math.max(0, c.progress / c.ticksRequired));
+        ctx.fillStyle = '#222';
+        ctx.fillRect(x0, y0, w, h);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillRect(x0, y0, w * pct, h);
+      }
+
       // Villagers — cluster by current physical position so dots don't overlap.
       const tweenProgress = Math.min(1, (performance.now() - tickStartAtRef.current) / tickMsRef.current);
       const prevPositions = prevPositionsRef.current;
@@ -553,10 +583,24 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onTileRi
         }
         const hover = hoverTileRef.current;
         const { x: cx, y: cy } = axialToPixel(hover, HEX_SIZE);
+        const tileTypeHere = cur.tiles.find((t) => t.q === hover.q && t.r === hover.r)?.type ?? 'water';
+        const occupied =
+          cur.buildings.some((b) => b.q === hover.q && b.r === hover.r) ||
+          cur.constructions.some((c) => c.q === hover.q && c.r === hover.r) ||
+          cur.lairs.some((l) => l.q === hover.q && l.r === hover.r);
+        const valid = !occupied && spec.tiles.includes(tileTypeHere as TileType);
         drawHexPath(ctx, cx, cy);
-        ctx.strokeStyle = spec.tiles.includes((cur.tiles.find((t) => t.q === hover.q && t.r === hover.r)?.type ?? 'water') as TileType) ? '#22c55e' : '#dc2626';
+        ctx.strokeStyle = valid ? '#22c55e' : '#dc2626';
         ctx.lineWidth = 2;
         ctx.stroke();
+        // Highlight the source tile.
+        const { x: sx, y: sy } = axialToPixel({ q: sel.sourceQ, r: sel.sourceR }, HEX_SIZE);
+        drawHexPath(ctx, sx, sy);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([5, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
     };
 

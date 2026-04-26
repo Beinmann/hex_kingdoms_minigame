@@ -1,5 +1,6 @@
-import { distance, findPath, inBounds, key, keyOf, neighbours } from './hex';
+import { distance, findPath, inBounds, keyOf, neighbours } from './hex';
 import {
+  BUILD_TICKS_BY_TYPE,
   BUILDING_SPEC,
   SOLDIER_COST,
   SOLDIER_POP,
@@ -58,6 +59,7 @@ function tileTypeAt(state: GameState, q: number, r: number): TileType | null {
 
 function isOccupied(state: GameState, q: number, r: number): boolean {
   if (state.buildings.some((b) => b.q === q && b.r === r)) return true;
+  if (state.constructions.some((c) => c.q === q && c.r === r)) return true;
   if (state.lairs.some((l) => l.q === q && l.r === r)) return true;
   return false;
 }
@@ -120,19 +122,16 @@ function attemptBuild(
   const site = findBuildSite(state, owner, type);
   if (!site) return false;
   pay(pstate.resources, spec.cost);
-  state.buildings.push({
-    id: newId(state, `${owner}_b`),
+  state.constructions.push({
+    id: newId(state, `${owner}_c`),
     type,
     owner,
     q: site.q,
     r: site.r,
-    hp: spec.hp,
+    progress: 0,
+    ticksRequired: BUILD_TICKS_BY_TYPE[type],
+    idleTicks: 0,
   });
-  if (type === 'farm') {
-    const tile = state.tiles.find((t) => t.q === site.q && t.r === site.r);
-    if (tile) tile.type = 'farm';
-  }
-  pstate.popCap += spec.popCapDelta ?? 0;
   return true;
 }
 
@@ -198,21 +197,27 @@ function aiAssignIdleVillagers(state: GameState, owner: Owner): void {
   const queues = state.tileQueuesByOwner[owner];
   const townhall = state.buildings.find((b) => b.owner === owner && b.type === 'townhall');
   if (!townhall) return;
-  const producers = state.buildings.filter(
-    (b) => b.owner === owner && BUILDING_SPEC[b.type].produces,
-  );
-  for (const producer of producers) {
-    if (producer.q === townhall.q && producer.r === townhall.r) continue;
-    const cap = capacityOf(state, producer.q, producer.r);
-    const current = occupantsAt(state, producer.q, producer.r, owner);
+  const targets: { q: number; r: number }[] = [];
+  for (const b of state.buildings) {
+    if (b.owner !== owner) continue;
+    if (BUILDING_SPEC[b.type].produces) targets.push({ q: b.q, r: b.r });
+  }
+  for (const c of state.constructions) {
+    if (c.owner !== owner) continue;
+    targets.push({ q: c.q, r: c.r });
+  }
+  for (const t of targets) {
+    if (t.q === townhall.q && t.r === townhall.r) continue;
+    const cap = capacityOf(state, t.q, t.r);
+    const current = occupantsAt(state, t.q, t.r, owner);
     let pending = 0;
     for (const k of Object.keys(queues)) {
       for (const cmd of queues[k]) {
-        if (cmd.destQ === producer.q && cmd.destR === producer.r) pending++;
+        if (cmd.destQ === t.q && cmd.destR === t.r) pending++;
       }
     }
     if (current + pending >= cap) continue;
-    issueMoveCommand(state, townhall.q, townhall.r, producer.q, producer.r, owner);
+    issueMoveCommand(state, townhall.q, townhall.r, t.q, t.r, owner);
   }
 }
 
@@ -295,9 +300,9 @@ function trySendArmy(state: GameState): boolean {
 export function rivalDecide(state: GameState): void {
   if (state.phase !== 'playing') return;
   const pstate = state.rival;
-  aiAssignIdleVillagers(state, 'rival');
   tryTrainVillager(state, 'rival', pstate);
   tryBuild(state, 'rival', pstate);
+  aiAssignIdleVillagers(state, 'rival');
   tryRecruit(state, 'rival', pstate);
   tryDefendArmies(state);
   if (state.tick >= state.rivalAI.nextRaidTick) {

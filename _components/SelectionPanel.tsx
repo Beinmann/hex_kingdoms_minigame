@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  BUILD_ABANDON_TICKS,
   BUILDING_SPEC,
   SOLDIER_COST,
   SOLDIER_POP,
@@ -8,6 +9,7 @@ import {
   VILLAGER_COST,
   VILLAGER_POP,
   VILLAGER_TRAIN_TICKS,
+  type Construction,
   type GameState,
   type Resources,
   type Selection,
@@ -22,6 +24,7 @@ type Props = {
   onRecruit: (barracksId: string) => void;
   onTrainVillager: (thId: string) => void;
   onDestroy: (buildingId: string) => void;
+  onCancelConstruction: (q: number, r: number) => void;
 };
 
 function costString(cost: Partial<Resources>): string {
@@ -39,6 +42,7 @@ export default function SelectionPanel({
   onRecruit,
   onTrainVillager,
   onDestroy,
+  onCancelConstruction,
 }: Props) {
   const tileCoord =
     selection.kind === 'tile'
@@ -51,6 +55,9 @@ export default function SelectionPanel({
     : null;
   const selectedBuilding = tileCoord
     ? state.buildings.find((b) => b.q === tileCoord.q && b.r === tileCoord.r) ?? null
+    : null;
+  const selectedConstruction = tileCoord
+    ? state.constructions.find((c) => c.q === tileCoord.q && c.r === tileCoord.r) ?? null
     : null;
   const selectedLair = tileCoord
     ? state.lairs.find((l) => l.q === tileCoord.q && l.r === tileCoord.r) ?? null
@@ -72,6 +79,8 @@ export default function SelectionPanel({
         <p className="text-xs text-zinc-400">
           Placing <span className="text-zinc-100 font-medium">{BUILDING_SPEC[selection.building].label}</span>
           {selection.sticky && <span className="text-zinc-500"> (sticky — Esc to stop)</span>}
+          . Builder will walk from{' '}
+          <span className="font-mono text-zinc-100">({selection.sourceQ},{selection.sourceR})</span>
           . Click a valid tile, or{' '}
           <button onClick={onCancelSelection} className="underline">cancel</button>.
         </p>
@@ -109,6 +118,13 @@ export default function SelectionPanel({
           )}
           {selectedLair && (
             <div className="text-rose-300">Monster lair · garrison {selectedLair.garrison}</div>
+          )}
+          {selectedConstruction && (
+            <ConstructionInfo
+              state={state}
+              construction={selectedConstruction}
+              onCancel={onCancelConstruction}
+            />
           )}
           {selectedBuilding && (
             <div>
@@ -200,6 +216,64 @@ export default function SelectionPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function ConstructionInfo({
+  state,
+  construction,
+  onCancel,
+}: {
+  state: GameState;
+  construction: Construction;
+  onCancel: (q: number, r: number) => void;
+}) {
+  const spec = BUILDING_SPEC[construction.type];
+  const builders = state.villagers.filter(
+    (v) =>
+      v.owner === construction.owner &&
+      v.homeQ === construction.q &&
+      v.homeR === construction.r &&
+      v.status === 'building',
+  ).length;
+  const pct = Math.min(
+    100,
+    Math.max(0, (construction.progress / construction.ticksRequired) * 100),
+  );
+  const ticksLeft = Math.max(0, construction.ticksRequired - construction.progress);
+  const idleLeft = Math.max(0, BUILD_ABANDON_TICKS - construction.idleTicks);
+  return (
+    <div className="space-y-1 mt-2 rounded border border-amber-900/40 bg-amber-950/20 p-2">
+      <div className="text-amber-200">
+        Building <span className="text-zinc-100 font-medium">{spec.label}</span>{' '}
+        <span className="text-zinc-500">({construction.owner})</span>
+      </div>
+      <div className="flex items-center gap-2 text-[11px]">
+        <span className="text-zinc-400 w-16 shrink-0">Progress</span>
+        <div className="flex-1 h-1.5 rounded bg-zinc-800 overflow-hidden">
+          <div className="h-full bg-amber-500/70" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="text-zinc-500 font-mono tabular-nums w-10 text-right">{ticksLeft}t</span>
+      </div>
+      <div className="text-[11px] text-zinc-500">
+        Builders <span className="text-zinc-300">{builders}</span>
+        {builders === 0 && (
+          <span className="ml-2 text-amber-400">
+            no builder · auto-cancels in {idleLeft}t
+          </span>
+        )}
+      </div>
+      {construction.owner === 'player' && (
+        <div className="pt-1">
+          <button
+            onClick={() => onCancel(construction.q, construction.r)}
+            className="px-2 py-1 rounded border border-rose-800 text-rose-300 hover:bg-rose-900/30 text-[11px]"
+          >
+            Cancel construction (refund) [W]
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

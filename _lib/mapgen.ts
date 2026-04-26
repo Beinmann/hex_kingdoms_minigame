@@ -259,6 +259,7 @@ export function createInitialState(seed: number = Date.now()): GameState {
     armies: [],
     villagers,
     trainings: [],
+    constructions: [],
     lairs,
     player,
     rival,

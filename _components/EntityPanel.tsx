@@ -57,6 +57,7 @@ const STATUS_LABEL: Record<VillagerStatus, string> = {
   work_gather: 'working',
   work_inbound: 'working',
   work_pause: 'pausing',
+  building: 'building',
 };
 
 function shortCost(cost: Partial<Resources>): string {

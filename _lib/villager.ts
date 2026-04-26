@@ -12,6 +12,7 @@ import {
   TILE_CAPACITY_DEFAULT,
   WORK_PAUSE_TICKS,
   type Building,
+  type Construction,
   type GameState,
   type HexCoord,
   type Owner,
@@ -28,6 +29,10 @@ export function buildingAt(state: GameState, q: number, r: number): Building | u
   return state.buildings.find((b) => b.q === q && b.r === r);
 }
 
+export function constructionAt(state: GameState, q: number, r: number): Construction | undefined {
+  return state.constructions.find((c) => c.q === q && c.r === r);
+}
+
 export function tileAt(state: GameState, q: number, r: number): Tile | undefined {
   return state.tiles.find((t) => t.q === q && t.r === r);
 }
@@ -37,11 +42,17 @@ export function isBusy(v: Villager): boolean {
     v.status === 'moving' ||
     v.status === 'work_outbound' ||
     v.status === 'work_gather' ||
-    v.status === 'work_inbound'
+    v.status === 'work_inbound' ||
+    v.status === 'building'
   );
 }
 
 export function capacityOf(state: GameState, q: number, r: number): number {
+  const c = constructionAt(state, q, r);
+  if (c) {
+    const cap = TILE_CAPACITY_BY_BUILDING[c.type];
+    if (cap !== undefined) return cap;
+  }
   const b = buildingAt(state, q, r);
   if (b) {
     const cap = TILE_CAPACITY_BY_BUILDING[b.type];
@@ -250,9 +261,15 @@ export function drainMoveQueues(state: GameState, owner: 'player' | 'rival' = 'p
   }
 }
 
-function onArrival(state: GameState, v: Villager): void {
-  const home = buildingAt(state, v.homeQ, v.homeR);
+export function onArrival(state: GameState, v: Villager): void {
   v.path = [];
+  const construction = constructionAt(state, v.homeQ, v.homeR);
+  if (construction && construction.owner === v.owner) {
+    v.status = 'building';
+    v.pauseTicksLeft = 0;
+    return;
+  }
+  const home = buildingAt(state, v.homeQ, v.homeR);
   if (home && home.owner === v.owner) {
     if (home.type === 'farm') {
       v.status = 'farming';
@@ -463,6 +480,17 @@ export function stepVillager(state: GameState, v: Villager): void {
         return;
       }
       beginWorkOutbound(state, v, home);
+      return;
+    }
+    case 'building': {
+      const c = constructionAt(state, v.homeQ, v.homeR);
+      if (!c || c.owner !== v.owner) {
+        v.status = 'idle';
+        v.path = [];
+        v.pauseTicksLeft = 0;
+        return;
+      }
+      // Progress is advanced by tickConstructions, which runs after tickVillagers.
       return;
     }
   }

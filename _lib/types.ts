@@ -67,7 +67,8 @@ export type VillagerStatus =
   | 'work_outbound'
   | 'work_gather'
   | 'work_inbound'
-  | 'work_pause';
+  | 'work_pause'
+  | 'building';
 
 export type Villager = {
   id: string;
@@ -83,6 +84,17 @@ export type Villager = {
 };
 
 export type MoveCommand = { destQ: number; destR: number };
+
+export type Construction = {
+  id: string;
+  type: BuildingType;
+  owner: Owner;
+  q: number;
+  r: number;
+  progress: number;
+  ticksRequired: number;
+  idleTicks: number;
+};
 
 export type Notification = {
   id: string;
@@ -121,7 +133,7 @@ export type GamePhase = 'playing' | 'won' | 'lost';
 export type Selection =
   | { kind: 'none' }
   | { kind: 'tile'; q: number; r: number }
-  | { kind: 'build'; building: BuildingType; sticky: boolean }
+  | { kind: 'build'; building: BuildingType; sticky: boolean; sourceQ: number; sourceR: number }
   | { kind: 'send'; armyId: string }
   | { kind: 'move_source'; q: number; r: number; all?: boolean };
 
@@ -135,6 +147,7 @@ export type GameState = {
   armies: Army[];
   villagers: Villager[];
   trainings: TrainingOrder[];
+  constructions: Construction[];
   lairs: MonsterLair[];
   player: PlayerState;
   rival: PlayerState;
@@ -264,6 +277,19 @@ export const TILE_CAPACITY_BY_BUILDING: Partial<Record<BuildingType, number>> = 
 };
 
 export const NOTIFICATION_TTL_TICKS = 3;
+
+export const BUILD_TICKS_BY_TYPE: Record<BuildingType, number> = {
+  townhall: 10,
+  house: 5,
+  farm: 5,
+  lumber: 5,
+  quarry: 8,
+  iron_mine: 8,
+  barracks: 8,
+  watchtower: 5,
+};
+
+export const BUILD_ABANDON_TICKS = 20;
 
 export const RESOURCE_BY_TILE: Partial<Record<TileType, keyof Resources>> = {
   forest: 'wood',

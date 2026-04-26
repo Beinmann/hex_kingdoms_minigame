@@ -5,12 +5,16 @@ import { spawnVillager } from '../villager';
 import { BUILDING_SPEC } from '../types';
 
 describe('rivalDecide', () => {
-  it('spends resources on a prioritised building when affordable', () => {
+  it('places a foundation on a prioritised building when affordable', () => {
     const s = createInitialState(42);
     s.rival.resources = { food: 100, wood: 100, stone: 100, iron: 100 };
-    const before = s.buildings.filter((b) => b.owner === 'rival').length;
+    const before =
+      s.buildings.filter((b) => b.owner === 'rival').length +
+      s.constructions.filter((c) => c.owner === 'rival').length;
     rivalDecide(s);
-    const after = s.buildings.filter((b) => b.owner === 'rival').length;
+    const after =
+      s.buildings.filter((b) => b.owner === 'rival').length +
+      s.constructions.filter((c) => c.owner === 'rival').length;
     expect(after).toBeGreaterThan(before);
   });
 

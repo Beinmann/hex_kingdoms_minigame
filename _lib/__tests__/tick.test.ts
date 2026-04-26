@@ -157,14 +157,18 @@ describe('advance', () => {
     expect(rivalScarcestResource(s)).toBe('food');
   });
 
-  it('the rival builds a lumber camp when wood is its scarcest resource', () => {
+  it('the rival starts a lumber-camp foundation when wood is its scarcest resource', () => {
     const s = freshState();
     // Force a clear scarcity on wood; everything else abundant.
     s.rival.resources = { food: 100, wood: 10, stone: 100, iron: 100 };
     s.rival.popCap = 20;
-    const before = s.buildings.filter((b) => b.owner === 'rival' && b.type === 'lumber').length;
+    const before =
+      s.buildings.filter((b) => b.owner === 'rival' && b.type === 'lumber').length +
+      s.constructions.filter((c) => c.owner === 'rival' && c.type === 'lumber').length;
     rivalDecide(s);
-    const after = s.buildings.filter((b) => b.owner === 'rival' && b.type === 'lumber').length;
+    const after =
+      s.buildings.filter((b) => b.owner === 'rival' && b.type === 'lumber').length +
+      s.constructions.filter((c) => c.owner === 'rival' && c.type === 'lumber').length;
     expect(after).toBe(before + 1);
   });
 });

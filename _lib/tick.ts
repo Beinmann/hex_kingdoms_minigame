@@ -1,12 +1,14 @@
-import { distance, inBounds, keyOf } from './hex';
+import { distance, inBounds, key, keyOf } from './hex';
 import { resolveCombat } from './combat';
 import { rivalDecide } from './ai';
-import { drainMoveQueues, evictFromBuilding, pruneToasts, tickVillagers } from './villager';
+import { drainMoveQueues, evictFromBuilding, onArrival, pruneToasts, pushToast, tickVillagers } from './villager';
 import {
   BASE_VISION,
+  BUILD_ABANDON_TICKS,
   BUILDING_SPEC,
   type Army,
   type Building,
+  type Construction,
   type GameState,
   type MonsterLair,
   type Owner,
@@ -91,6 +93,93 @@ function killVillagersOnHostileTiles(state: GameState): void {
 
 function tickTrainings(state: GameState): void {
   for (const t of state.trainings) t.ticksLeft -= 1;
+}
+
+function completeConstruction(state: GameState, c: Construction): void {
+  const spec = BUILDING_SPEC[c.type];
+  state.buildings.push({
+    id: newId(state, `${c.owner}_b`),
+    type: c.type,
+    owner: c.owner,
+    q: c.q,
+    r: c.r,
+    hp: spec.hp,
+  });
+  if (c.type === 'farm') {
+    const tile = state.tiles.find((t) => t.q === c.q && t.r === c.r);
+    if (tile) tile.type = 'farm';
+  }
+  for (const v of state.villagers) {
+    if (v.owner === c.owner && v.homeQ === c.q && v.homeR === c.r && v.status === 'building') {
+      onArrival(state, v);
+    }
+  }
+  state.constructions = state.constructions.filter((x) => x.id !== c.id);
+  if (c.owner === 'player') pushToast(state, `${spec.label} completed.`);
+}
+
+function abandonConstruction(state: GameState, c: Construction): void {
+  const spec = BUILDING_SPEC[c.type];
+  const ps = c.owner === 'player' ? state.player : c.owner === 'rival' ? state.rival : null;
+  if (ps) {
+    for (const k of ['food', 'wood', 'stone', 'iron'] as const) {
+      if (spec.cost[k]) ps.resources[k] += spec.cost[k]!;
+    }
+  }
+  for (const v of state.villagers) {
+    if (v.homeQ === c.q && v.homeR === c.r && v.status === 'building') {
+      v.homeQ = v.q;
+      v.homeR = v.r;
+      v.status = 'idle';
+      v.path = [];
+      v.carrying = null;
+      v.pauseTicksLeft = 0;
+    }
+  }
+  for (const owner of ['player', 'rival'] as const) {
+    const queues = state.tileQueuesByOwner[owner];
+    for (const srcKey of Object.keys(queues)) {
+      const filtered = queues[srcKey].filter((cmd) => !(cmd.destQ === c.q && cmd.destR === c.r));
+      if (filtered.length === 0) delete queues[srcKey];
+      else queues[srcKey] = filtered;
+    }
+  }
+  const fk = key(c.q, c.r);
+  delete state.tileQueuesByOwner.player[fk];
+  delete state.tileQueuesByOwner.rival[fk];
+  state.constructions = state.constructions.filter((x) => x.id !== c.id);
+  if (c.owner === 'player') pushToast(state, `${spec.label} construction abandoned — refunded.`);
+}
+
+function tickConstructions(state: GameState): void {
+  const completed: Construction[] = [];
+  const cancelled: Construction[] = [];
+  for (const c of state.constructions) {
+    let builders = 0;
+    for (const v of state.villagers) {
+      if (v.owner !== c.owner) continue;
+      if (v.homeQ !== c.q || v.homeR !== c.r) continue;
+      if (v.status !== 'building') continue;
+      builders++;
+    }
+    if (builders > 0) {
+      c.progress += builders;
+      c.idleTicks = 0;
+    } else {
+      c.idleTicks += 1;
+    }
+    if (c.progress >= c.ticksRequired) completed.push(c);
+    else if (c.idleTicks >= BUILD_ABANDON_TICKS) cancelled.push(c);
+  }
+  for (const c of completed) completeConstruction(state, c);
+  for (const c of cancelled) abandonConstruction(state, c);
+}
+
+export function cancelConstructionById(state: GameState, id: string): boolean {
+  const c = state.constructions.find((x) => x.id === id);
+  if (!c) return false;
+  abandonConstruction(state, c);
+  return true;
 }
 
 export function newId(state: GameState, prefix: string): string {
@@ -247,6 +336,7 @@ export function advance(state: GameState): GameState {
   drainMoveQueues(next, 'player');
   drainMoveQueues(next, 'rival');
   tickVillagers(next);
+  tickConstructions(next);
 
   tickTrainings(next);
   completeTrainings(next);

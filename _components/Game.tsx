@@ -6,11 +6,12 @@ import EntityPanel from './EntityPanel';
 import ResourceBar from './ResourceBar';
 import SelectionPanel from './SelectionPanel';
 import Sidebar from './Sidebar';
-import { advance } from '../_lib/tick';
+import { advance, cancelConstructionById } from '../_lib/tick';
 import { createInitialState } from '../_lib/mapgen';
 import { findPath, key } from '../_lib/hex';
-import { issueMoveCommand } from '../_lib/villager';
+import { issueMoveCommand, occupantsAt, pushToast } from '../_lib/villager';
 import {
+  BUILD_TICKS_BY_TYPE,
   BUILDING_SPEC,
   SOLDIER_COST,
   SOLDIER_POP,
@@ -40,25 +41,50 @@ function pay(res: Resources, cost: Partial<Resources>): void {
   }
 }
 
-function placeBuilding(state: GameState, type: BuildingType, q: number, r: number): GameState | null {
+function placeConstruction(
+  state: GameState,
+  type: BuildingType,
+  q: number,
+  r: number,
+  sourceQ: number,
+  sourceR: number,
+): GameState | null {
   const spec = BUILDING_SPEC[type];
   const tile = state.tiles.find((t) => t.q === q && t.r === r);
   if (!tile || !spec.tiles.includes(tile.type)) return null;
   if (state.buildings.some((b) => b.q === q && b.r === r)) return null;
+  if (state.constructions.some((c) => c.q === q && c.r === r)) return null;
   if (state.lairs.some((l) => l.q === q && l.r === r)) return null;
   if (state.armies.some((a) => a.q === q && a.r === r && a.owner !== 'player')) return null;
   if (!canAfford(state.player.resources, spec.cost)) return null;
-  const next: GameState = { ...state, player: { ...state.player, resources: { ...state.player.resources } } };
-  pay(next.player.resources, spec.cost);
-  next.buildings = [
-    ...state.buildings,
-    { id: `pb_${state.nextId}`, type, owner: 'player', q, r, hp: spec.hp },
-  ];
-  if (type === 'farm') {
-    next.tiles = next.tiles.map((t) => (t.q === q && t.r === r ? { ...t, type: 'farm' as const } : t));
+  if (q === sourceQ && r === sourceR) return null;
+  if (occupantsAt(state, sourceQ, sourceR, 'player') === 0) {
+    const draft = JSON.parse(JSON.stringify(state)) as GameState;
+    pushToast(draft, 'No villager on source tile.');
+    return draft;
   }
-  next.player.popCap = state.player.popCap + (spec.popCapDelta ?? 0);
+  const next = JSON.parse(JSON.stringify(state)) as GameState;
+  pay(next.player.resources, spec.cost);
+  next.constructions.push({
+    id: `pc_${state.nextId}`,
+    type,
+    owner: 'player',
+    q,
+    r,
+    progress: 0,
+    ticksRequired: BUILD_TICKS_BY_TYPE[type],
+    idleTicks: 0,
+  });
   next.nextId = state.nextId + 1;
+  issueMoveCommand(next, sourceQ, sourceR, q, r, 'player');
+  return next;
+}
+
+function cancelConstructionFor(state: GameState, q: number, r: number): GameState | null {
+  const c = state.constructions.find((x) => x.q === q && x.r === r && x.owner === 'player');
+  if (!c) return null;
+  const next = JSON.parse(JSON.stringify(state)) as GameState;
+  cancelConstructionById(next, c.id);
   return next;
 }
 
@@ -261,7 +287,14 @@ export default function Game() {
   }, [hydrated]);
 
   const handleSelectBuild = useCallback((b: BuildingType) => {
-    setSelection((cur) => (cur.kind === 'build' && cur.building === b ? { kind: 'none' } : { kind: 'build', building: b, sticky: false }));
+    setSelection((cur) => {
+      if (cur.kind === 'build' && cur.building === b) return { kind: 'none' };
+      if (cur.kind === 'build') return { ...cur, building: b };
+      if (cur.kind === 'tile' || cur.kind === 'move_source') {
+        return { kind: 'build', building: b, sticky: false, sourceQ: cur.q, sourceR: cur.r };
+      }
+      return cur;
+    });
   }, []);
 
   const handleCancelSelection = useCallback(() => setSelection({ kind: 'none' }), []);
@@ -303,6 +336,14 @@ export default function Game() {
     }
   }, []);
 
+  const handleCancelConstruction = useCallback((q: number, r: number) => {
+    const next = cancelConstructionFor(stateRef.current, q, r);
+    if (next) {
+      stateRef.current = next;
+      setState(next);
+    }
+  }, []);
+
   const handleSendArmy = useCallback((armyId: string) => {
     setSelection({ kind: 'send', armyId });
   }, []);
@@ -329,11 +370,20 @@ export default function Game() {
     (q: number, r: number, shift: boolean) => {
       const cur = stateRef.current;
       if (selection.kind === 'build') {
-        const next = placeBuilding(cur, selection.building, q, r);
+        const next = placeConstruction(
+          cur,
+          selection.building,
+          q,
+          r,
+          selection.sourceQ,
+          selection.sourceR,
+        );
         if (next) {
           stateRef.current = next;
           setState(next);
-          if (!(shift || selection.sticky)) setSelection({ kind: 'none' });
+          if (!(shift || selection.sticky)) {
+            setSelection({ kind: 'tile', q: selection.sourceQ, r: selection.sourceR });
+          }
         }
         return;
       }
@@ -411,6 +461,9 @@ export default function Game() {
         const buildingHere = cur.buildings.find(
           (b) => b.q === tileSel.q && b.r === tileSel.r && b.owner === 'player',
         );
+        const constructionHere = cur.constructions.find(
+          (c) => c.q === tileSel.q && c.r === tileSel.r && c.owner === 'player',
+        );
         const playerVillagersHere = cur.villagers.some(
           (v) => v.owner === 'player' && v.homeQ === tileSel.q && v.homeR === tileSel.r,
         );
@@ -435,6 +488,16 @@ export default function Game() {
           }
         }
         if (k === 'w') {
+          if (constructionHere) {
+            e.preventDefault();
+            const next = cancelConstructionFor(cur, tileSel.q, tileSel.r);
+            if (next) {
+              stateRef.current = next;
+              setState(next);
+              setSelection({ kind: 'none' });
+            }
+            return;
+          }
           if (buildingHere && buildingHere.type !== 'townhall') {
             e.preventDefault();
             const next = destroyBuilding(cur, buildingHere.id);
@@ -461,7 +524,12 @@ export default function Game() {
       if (t) {
         e.preventDefault();
         const sticky = e.shiftKey;
-        setSelection({ kind: 'build', building: t, sticky });
+        const sel = selectionRef.current;
+        if (sel.kind === 'build') {
+          setSelection({ ...sel, building: t, sticky });
+        } else if (sel.kind === 'tile' || sel.kind === 'move_source') {
+          setSelection({ kind: 'build', building: t, sticky, sourceQ: sel.q, sourceR: sel.r });
+        }
       }
     };
     window.addEventListener('keydown', onKey);
@@ -489,6 +557,7 @@ export default function Game() {
             onRecruit={handleRecruit}
             onTrainVillager={handleTrainVillager}
             onDestroy={handleDestroy}
+            onCancelConstruction={handleCancelConstruction}
           />
           <EntityPanel
             state={state}
