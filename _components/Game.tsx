@@ -7,7 +7,6 @@ import Sidebar from './Sidebar';
 import { advance } from '../_lib/tick';
 import { createInitialState } from '../_lib/mapgen';
 import { findPath, key } from '../_lib/hex';
-import { clearSave, loadSave, writeSave } from '../_lib/save';
 import { issueMoveCommand } from '../_lib/villager';
 import {
   BUILDING_SPEC,
@@ -203,8 +202,7 @@ export default function Game() {
   }, [selection]);
 
   useEffect(() => {
-    const saved = loadSave();
-    const initial = saved ?? createInitialState();
+    const initial = createInitialState();
     stateRef.current = initial;
     setState(initial);
     setHydrated(true);
@@ -236,11 +234,6 @@ export default function Game() {
     return () => cancelAnimationFrame(raf);
   }, [hydrated]);
 
-  useEffect(() => {
-    if (!hydrated) return;
-    writeSave(state);
-  }, [state, hydrated]);
-
   const handleSelectBuild = useCallback((b: BuildingType) => {
     setSelection((cur) => (cur.kind === 'build' && cur.building === b ? { kind: 'none' } : { kind: 'build', building: b, sticky: false }));
   }, []);
@@ -252,7 +245,6 @@ export default function Game() {
   const handleSetSpeed = useCallback((s: number) => setSpeed(s), []);
 
   const handleRestart = useCallback(() => {
-    clearSave();
     const fresh = createInitialState();
     stateRef.current = fresh;
     setState(fresh);
