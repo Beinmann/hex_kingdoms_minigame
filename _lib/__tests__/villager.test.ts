@@ -1,17 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import { createInitialState } from '../mapgen';
 import {
-  assignVillager,
+  capacityOf,
   chooseSource,
-  countAssigned,
-  pickIdleVillagers,
+  drainMoveQueues,
+  issueMoveCommand,
+  occupantsAt,
+  spawnVillager,
   stepVillager,
   tickVillagers,
 } from '../villager';
-import { BUILDING_SPEC, type GameState } from '../types';
+import { BUILDING_SPEC, TILE_CAPACITY_DEFAULT, type GameState } from '../types';
 
 function fresh(): GameState {
   return createInitialState(2026);
+}
+
+function freeGrass(s: GameState) {
+  return s.tiles.find(
+    (t) => t.type === 'grass' && !s.buildings.some((b) => b.q === t.q && b.r === t.r),
+  )!;
 }
 
 describe('villager helpers', () => {
@@ -36,23 +44,6 @@ describe('villager helpers', () => {
     expect(src!.type).toBe('forest');
   });
 
-  it('chooseSource returns the building tile itself for a farm', () => {
-    const s = fresh();
-    const grass = s.tiles.find((t) => t.type === 'grass' && !s.buildings.some((b) => b.q === t.q && b.r === t.r))!;
-    s.buildings.push({
-      id: 'f1',
-      type: 'farm',
-      owner: 'player',
-      q: grass.q,
-      r: grass.r,
-      hp: BUILDING_SPEC.farm.hp,
-    });
-    const src = chooseSource(s, s.buildings.find((b) => b.id === 'f1')!);
-    expect(src).not.toBeNull();
-    expect(src!.q).toBe(grass.q);
-    expect(src!.r).toBe(grass.r);
-  });
-
   it('chooseSource returns null when no forest is within radius', () => {
     const s = fresh();
     for (const t of s.tiles) {
@@ -62,7 +53,7 @@ describe('villager helpers', () => {
         delete t.maxPool;
       }
     }
-    const grass = s.tiles.find((t) => t.type === 'grass')!;
+    const grass = freeGrass(s);
     s.buildings.push({
       id: 'l1',
       type: 'lumber',
@@ -75,9 +66,10 @@ describe('villager helpers', () => {
     expect(src).toBeNull();
   });
 
-  it('assignVillager moves a villager to walking_to_reassignment, recall to idle', () => {
+  it('capacityOf returns the tile-default for non-buildings and farm cap for farms', () => {
     const s = fresh();
-    const grass = s.tiles.find((t) => t.type === 'grass' && !s.buildings.some((b) => b.q === t.q && b.r === t.r))!;
+    const grass = freeGrass(s);
+    expect(capacityOf(s, grass.q, grass.r)).toBe(TILE_CAPACITY_DEFAULT);
     s.buildings.push({
       id: 'f1',
       type: 'farm',
@@ -86,94 +78,90 @@ describe('villager helpers', () => {
       r: grass.r,
       hp: BUILDING_SPEC.farm.hp,
     });
-    s.villagers.push({
-      id: 'v1',
-      owner: 'player',
-      q: 0,
-      r: 0,
-      path: [],
-      state: 'idle',
-      assignedTo: null,
-      carrying: null,
-      gatherTicksLeft: 0,
-      wanderCooldown: 0,
-    });
-    assignVillager(s, 'v1', 'f1');
-    const v = s.villagers.find((vv) => vv.id === 'v1')!;
-    expect(v.assignedTo).toBe('f1');
-    expect(['walking_to_reassignment', 'walking_to_source']).toContain(v.state);
-    assignVillager(s, 'v1', null);
-    expect(v.assignedTo).toBeNull();
-    expect(v.state).toBe('idle');
+    expect(capacityOf(s, grass.q, grass.r)).toBe(2);
   });
 
-  it('countAssigned and pickIdleVillagers reflect assignments', () => {
+  it('occupantsAt counts villagers whose home tile matches', () => {
     const s = fresh();
-    const grass = s.tiles.find((t) => t.type === 'grass' && !s.buildings.some((b) => b.q === t.q && b.r === t.r))!;
-    s.buildings.push({
-      id: 'f1',
-      type: 'farm',
-      owner: 'player',
-      q: grass.q,
-      r: grass.r,
-      hp: BUILDING_SPEC.farm.hp,
-    });
-    s.villagers.push({
-      id: 'v1',
-      owner: 'player',
-      q: 0,
-      r: 0,
-      path: [],
-      state: 'idle',
-      assignedTo: null,
-      carrying: null,
-      gatherTicksLeft: 0,
-      wanderCooldown: 0,
-    });
-    s.villagers.push({
-      id: 'v2',
-      owner: 'player',
-      q: 0,
-      r: 0,
-      path: [],
-      state: 'idle',
-      assignedTo: null,
-      carrying: null,
-      gatherTicksLeft: 0,
-      wanderCooldown: 0,
-    });
-    expect(countAssigned(s, 'f1')).toBe(0);
-    expect(pickIdleVillagers(s, 'player', 5).length).toBe(2);
-    assignVillager(s, 'v1', 'f1');
-    expect(countAssigned(s, 'f1')).toBe(1);
-    expect(pickIdleVillagers(s, 'player', 5).length).toBe(1);
+    const grass = freeGrass(s);
+    s.villagers.push(spawnVillager(s, 'player', grass.q, grass.r));
+    s.villagers.push(spawnVillager(s, 'player', grass.q, grass.r));
+    expect(occupantsAt(s, grass.q, grass.r, 'player')).toBe(2);
   });
 
-  it('stepVillager runs without throwing for every state', () => {
+  it('issueMoveCommand rejects when the source has no villagers', () => {
     const s = fresh();
-    s.villagers.push({
-      id: 'v1',
-      owner: 'player',
-      q: 0,
-      r: 0,
-      path: [],
-      state: 'idle',
-      assignedTo: null,
-      carrying: null,
-      gatherTicksLeft: 0,
-      wanderCooldown: 0,
-    });
+    const grass = freeGrass(s);
+    const ok = issueMoveCommand(s, grass.q, grass.r, grass.q + 1, grass.r);
+    expect(ok).toBe(false);
+    expect(s.notifications.length).toBe(1);
+  });
+
+  it('issueMoveCommand queues a command when the source has a villager', () => {
+    const s = fresh();
+    const a = freeGrass(s);
+    s.villagers.push(spawnVillager(s, 'player', a.q, a.r));
+    const ok = issueMoveCommand(s, a.q, a.r, a.q + 1, a.r);
+    expect(ok).toBe(true);
+    expect(s.tileQueues[`${a.q},${a.r}`]).toBeDefined();
+    expect(s.tileQueues[`${a.q},${a.r}`].length).toBe(1);
+  });
+
+  it('drainMoveQueues moves a villager logically to dest on first drain', () => {
+    const s = fresh();
+    const a = freeGrass(s);
+    s.villagers.push(spawnVillager(s, 'player', a.q, a.r));
+    issueMoveCommand(s, a.q, a.r, a.q + 1, a.r);
+    drainMoveQueues(s);
     const v = s.villagers[0];
-    for (const state of ['idle', 'walking_to_source', 'gathering', 'walking_to_dropoff', 'depositing', 'walking_to_reassignment'] as const) {
-      v.state = state;
-      v.path = [];
-      stepVillager(s, v, 0);
+    expect(v.homeQ).toBe(a.q + 1);
+    expect(v.homeR).toBe(a.r);
+    expect(v.status).toBe('moving');
+  });
+
+  it('over-capacity move command is rejected at issuance', () => {
+    const s = fresh();
+    const a = freeGrass(s);
+    const dest = freeGrass(s); // same as `a` for this seed; force a known dest
+    const destQ = a.q + 1;
+    const destR = a.r;
+    // Fill the destination's logical occupants up to capacity (default 3).
+    for (let i = 0; i < TILE_CAPACITY_DEFAULT; i++) {
+      const v = spawnVillager(s, 'player', destQ, destR);
+      v.homeQ = destQ;
+      v.homeR = destR;
+      s.villagers.push(v);
     }
-    expect(true).toBe(true);
+    s.villagers.push(spawnVillager(s, 'player', a.q, a.r));
+    const ok = issueMoveCommand(s, a.q, a.r, destQ, destR);
+    expect(ok).toBe(false);
+    void dest;
   });
 
   it('tickVillagers advances all villagers without throwing', () => {
     const s = fresh();
     expect(() => tickVillagers(s)).not.toThrow();
+  });
+
+  it('stepVillager handles every status without throwing', () => {
+    const s = fresh();
+    s.villagers.push(spawnVillager(s, 'player', 0, 0));
+    const v = s.villagers[0];
+    for (const status of [
+      'idle',
+      'moving',
+      'arrived_pause',
+      'farming',
+      'work_outbound',
+      'work_gather',
+      'work_inbound',
+      'work_pause',
+    ] as const) {
+      v.status = status;
+      v.path = [];
+      v.pauseTicksLeft = 1;
+      stepVillager(s, v);
+    }
+    expect(true).toBe(true);
   });
 });

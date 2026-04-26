@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createInitialState } from '../mapgen';
 import { advance } from '../tick';
-import { assignVillager } from '../villager';
+import { issueMoveCommand, spawnVillager } from '../villager';
 import { BUILDING_SPEC, type Building, type GameState } from '../types';
 
 function freshState(): GameState {
@@ -29,7 +29,7 @@ describe('advance', () => {
     expect(JSON.stringify(s)).toBe(snap);
   });
 
-  it('a villager assigned to a lumber camp on grass gathers wood from a nearby forest', () => {
+  it('a villager whose home is a lumber camp gathers wood from a nearby forest', () => {
     const s = freshState();
     const forest = s.tiles.find(
       (t) => t.type === 'forest' && !s.buildings.some((b) => b.q === t.q && b.r === t.r),
@@ -43,20 +43,13 @@ describe('advance', () => {
         Math.abs(t.r - forest.r) <= 2,
     )!;
     addBuilding(s, { id: 'l1', type: 'lumber', owner: 'player', q: grassNear.q, r: grassNear.r });
-    s.villagers.push({
-      id: 'v1',
-      owner: 'player',
-      q: grassNear.q,
-      r: grassNear.r,
-      path: [],
-      state: 'idle',
-      assignedTo: null,
-      carrying: null,
-      gatherTicksLeft: 0,
-      wanderCooldown: 0,
-    });
+    const v = spawnVillager(s, 'player', grassNear.q, grassNear.r);
+    v.homeQ = grassNear.q;
+    v.homeR = grassNear.r;
+    v.status = 'arrived_pause';
+    v.pauseTicksLeft = 1;
+    s.villagers.push(v);
     s.player.resources.food = 1000;
-    assignVillager(s, 'v1', 'l1');
 
     const startWood = s.player.resources.wood;
     let cur: GameState = s;
@@ -66,24 +59,29 @@ describe('advance', () => {
     expect(tileAfter.pool ?? 0).toBeLessThan(startPool);
   });
 
-  it('kills a villager when food runs out', () => {
+  it('food does not drain over time (upkeep is disabled)', () => {
     const s = freshState();
-    s.villagers.push({
-      id: 'v1',
-      owner: 'player',
-      q: 0,
-      r: 0,
-      path: [],
-      state: 'idle',
-      assignedTo: null,
-      carrying: null,
-      gatherTicksLeft: 0,
-      wanderCooldown: 0,
-    });
-    s.player.resources.food = 0;
+    s.villagers.push(spawnVillager(s, 'player', 0, 0));
+    s.player.resources.food = 5;
+    let cur: GameState = s;
+    for (let i = 0; i < 10; i++) cur = advance(cur);
+    expect(cur.player.resources.food).toBe(5);
+    expect(cur.villagers.filter((v) => v.owner === 'player').length).toBe(1);
+  });
+
+  it('a queued move command moves a villager logically on next advance', () => {
+    const s = freshState();
+    const grass = s.tiles.find(
+      (t) => t.type === 'grass' && !s.buildings.some((b) => b.q === t.q && b.r === t.r),
+    )!;
+    const v = spawnVillager(s, 'player', grass.q, grass.r);
+    s.villagers.push(v);
+    const ok = issueMoveCommand(s, grass.q, grass.r, grass.q + 1, grass.r);
+    expect(ok).toBe(true);
     const next = advance(s);
-    expect(next.villagers.filter((v) => v.owner === 'player').length).toBe(0);
-    expect(next.player.resources.food).toBe(0);
+    const moved = next.villagers.find((vv) => vv.id === v.id)!;
+    expect(moved.homeQ).toBe(grass.q + 1);
+    expect(moved.homeR).toBe(grass.r);
   });
 
   it('reveals tiles around the player town hall', () => {

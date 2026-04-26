@@ -59,25 +59,35 @@ export type Army = {
   path: HexCoord[];
 };
 
-export type VillagerState =
+export type VillagerStatus =
   | 'idle'
-  | 'walking_to_source'
-  | 'gathering'
-  | 'walking_to_dropoff'
-  | 'depositing'
-  | 'walking_to_reassignment';
+  | 'moving'
+  | 'arrived_pause'
+  | 'farming'
+  | 'work_outbound'
+  | 'work_gather'
+  | 'work_inbound'
+  | 'work_pause';
 
 export type Villager = {
   id: string;
   owner: Owner;
   q: number;
   r: number;
+  homeQ: number;
+  homeR: number;
+  status: VillagerStatus;
   path: HexCoord[];
-  state: VillagerState;
-  assignedTo: string | null;
   carrying: { resource: keyof Resources; amount: number } | null;
-  gatherTicksLeft: number;
-  wanderCooldown: number;
+  pauseTicksLeft: number;
+};
+
+export type MoveCommand = { destQ: number; destR: number };
+
+export type Notification = {
+  id: string;
+  text: string;
+  tickAdded: number;
 };
 
 export type TrainingOrder = {
@@ -113,8 +123,7 @@ export type Selection =
   | { kind: 'tile'; q: number; r: number }
   | { kind: 'build'; building: BuildingType; sticky: boolean }
   | { kind: 'send'; armyId: string }
-  | { kind: 'transfer_source'; buildingId: string }
-  | { kind: 'rect_select'; villagerIds: string[] };
+  | { kind: 'move_source'; q: number; r: number };
 
 export type GameState = {
   tick: number;
@@ -131,6 +140,8 @@ export type GameState = {
   rival: PlayerState;
   rivalAI: RivalAIState;
   visible: Record<string, true>;
+  tileQueues: Record<string, MoveCommand[]>;
+  notifications: Notification[];
   nextId: number;
 };
 
@@ -235,7 +246,23 @@ export const EXTRACTOR_RADIUS = 3;
 export const GATHER_TICKS = 2;
 export const GATHER_AMOUNT = 1;
 export const INITIAL_VILLAGERS = 0;
-export const IDLE_WANDER_INTERVAL_TICKS = 3;
+
+export const ARRIVED_PAUSE_TICKS = 1;
+export const WORK_PAUSE_TICKS = 1;
+
+export const TILE_CAPACITY_DEFAULT = 3;
+export const TILE_CAPACITY_BY_BUILDING: Partial<Record<BuildingType, number>> = {
+  townhall: 5,
+  farm: 2,
+  lumber: 3,
+  quarry: 3,
+  iron_mine: 3,
+  barracks: 3,
+  house: 3,
+  watchtower: 3,
+};
+
+export const NOTIFICATION_TTL_TICKS = 3;
 
 export const RESOURCE_BY_TILE: Partial<Record<TileType, keyof Resources>> = {
   forest: 'wood',

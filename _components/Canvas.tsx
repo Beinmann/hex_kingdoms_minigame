@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import { axialToPixel, hexCorners, keyOf, pixelToAxial } from '../_lib/hex';
+import { capacityOf, occupantsAt } from '../_lib/villager';
 import {
   BUILDING_SPEC,
   CAMERA_PAN_SPEED,
@@ -15,6 +16,7 @@ import {
   type GameState,
   type Selection,
   type TileType,
+  type Villager,
 } from '../_lib/types';
 
 export const HEX_SIZE = 26;
@@ -45,11 +47,25 @@ type Props = {
   selection: Selection;
   tickMs: number;
   onTileClick: (q: number, r: number, shift: boolean) => void;
-  onRectSelect: (villagerIds: string[]) => void;
-  onTileHover?: (q: number | null, r: number | null) => void;
 };
 
 type WorldBounds = { minX: number; minY: number; maxX: number; maxY: number };
+
+type FloatIcon = {
+  id: number;
+  x: number;
+  y: number;
+  kind: 'food' | 'wood' | 'stone' | 'iron';
+  startedAt: number;
+};
+
+const FLOAT_ICON_TTL_MS = 900;
+const ICON_CHARS: Record<FloatIcon['kind'], string> = {
+  food: '🌾',
+  wood: '🪵',
+  stone: '🪨',
+  iron: '⛓',
+};
 
 function computeWorldBounds(): WorldBounds {
   let minX = Infinity;
@@ -103,11 +119,43 @@ function ownerFill(owner: 'player' | 'rival' | 'neutral'): string {
   return '#374151';
 }
 
-export default function Canvas({ state, selection, tickMs, onTileClick, onRectSelect, onTileHover }: Props) {
+// Offsets within a tile for clustering dots when multiple villagers share the same tile.
+const CLUSTER_OFFSETS: { x: number; y: number }[][] = [
+  [{ x: 0, y: 0 }],
+  [
+    { x: -0.28, y: 0 },
+    { x: 0.28, y: 0 },
+  ],
+  [
+    { x: 0, y: -0.3 },
+    { x: -0.28, y: 0.18 },
+    { x: 0.28, y: 0.18 },
+  ],
+  [
+    { x: -0.28, y: -0.2 },
+    { x: 0.28, y: -0.2 },
+    { x: -0.28, y: 0.2 },
+    { x: 0.28, y: 0.2 },
+  ],
+  [
+    { x: 0, y: 0 },
+    { x: -0.32, y: -0.22 },
+    { x: 0.32, y: -0.22 },
+    { x: -0.32, y: 0.22 },
+    { x: 0.32, y: 0.22 },
+  ],
+];
+
+function clusterOffset(idx: number, total: number): { x: number; y: number } {
+  if (total <= 0) return { x: 0, y: 0 };
+  const layout = CLUSTER_OFFSETS[Math.min(total, CLUSTER_OFFSETS.length) - 1];
+  return layout[idx % layout.length];
+}
+
+export default function Canvas({ state, selection, tickMs, onTileClick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef(state);
   const selectionRef = useRef(selection);
-  const onHoverRef = useRef(onTileHover);
   const tickMsRef = useRef(tickMs);
   const bounds = useMemo(() => computeWorldBounds(), []);
   const cameraRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -118,11 +166,9 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onRectSe
   const prevPositionsRef = useRef<Map<string, { q: number; r: number }>>(new Map());
   const tickStartAtRef = useRef(performance.now());
   const hoverTileRef = useRef<{ q: number; r: number } | null>(null);
-  const dragRef = useRef<{ start: { x: number; y: number }; current: { x: number; y: number } } | null>(null);
-  const onRectSelectRef = useRef(onRectSelect);
-  useEffect(() => {
-    onRectSelectRef.current = onRectSelect;
-  }, [onRectSelect]);
+  const floatIconsRef = useRef<FloatIcon[]>([]);
+  const floatIconIdRef = useRef(0);
+  const prevVillagerSnapshotRef = useRef<Map<string, Villager>>(new Map());
 
   useEffect(() => {
     const prev = stateRef.current;
@@ -132,15 +178,49 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onRectSe
       for (const a of prev.armies) positions.set(a.id, { q: a.q, r: a.r });
       prevPositionsRef.current = positions;
       tickStartAtRef.current = performance.now();
+      // Spawn float icons for transitions: deposits and farm production.
+      const prevById = prevVillagerSnapshotRef.current;
+      for (const v of state.villagers) {
+        const before = prevById.get(v.id);
+        if (!before) continue;
+        // Deposit: previous status was work_inbound and now work_pause (or carrying gone).
+        if (
+          before.status === 'work_inbound' &&
+          (v.status === 'work_pause' || v.status === 'idle')
+        ) {
+          const home = state.buildings.find((b) => b.q === v.homeQ && b.r === v.homeR);
+          if (home && before.carrying) {
+            const px = axialToPixel({ q: home.q, r: home.r }, HEX_SIZE);
+            floatIconsRef.current.push({
+              id: floatIconIdRef.current++,
+              x: px.x,
+              y: px.y,
+              kind: before.carrying.resource as FloatIcon['kind'],
+              startedAt: performance.now(),
+            });
+          }
+        }
+        // Farming: each tick a 'farming' villager produces food.
+        if (v.status === 'farming') {
+          const px = axialToPixel({ q: v.homeQ, r: v.homeR }, HEX_SIZE);
+          floatIconsRef.current.push({
+            id: floatIconIdRef.current++,
+            x: px.x + (Math.random() - 0.5) * HEX_SIZE * 0.4,
+            y: px.y,
+            kind: 'food',
+            startedAt: performance.now(),
+          });
+        }
+      }
+      const snap = new Map<string, Villager>();
+      for (const v of state.villagers) snap.set(v.id, { ...v });
+      prevVillagerSnapshotRef.current = snap;
     }
     stateRef.current = state;
   }, [state]);
   useEffect(() => {
     selectionRef.current = selection;
   }, [selection]);
-  useEffect(() => {
-    onHoverRef.current = onTileHover;
-  }, [onTileHover]);
   useEffect(() => {
     tickMsRef.current = tickMs;
   }, [tickMs]);
@@ -220,6 +300,10 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onRectSe
         );
       }
 
+      // Prune expired float icons.
+      const cutoff = now - FLOAT_ICON_TTL_MS;
+      floatIconsRef.current = floatIconsRef.current.filter((i) => i.startedAt >= cutoff);
+
       drawScene(ctx, dpr);
       raf = requestAnimationFrame(loop);
     };
@@ -278,24 +362,21 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onRectSe
         if (!cur.visible[keyOf(b)]) continue;
         const { x: cx, y: cy } = axialToPixel({ q: b.q, r: b.r }, HEX_SIZE);
         if (b.type === 'farm') {
-          ctx.fillStyle = b.owner === 'player' ? 'rgba(29,78,216,0.7)' : 'rgba(185,28,28,0.7)';
+          // Farm doesn't draw a big building disc — the tile is already coloured.
+        } else {
+          ctx.fillStyle = ownerFill(b.owner);
           ctx.beginPath();
-          ctx.arc(cx, cy, HEX_SIZE * 0.18, 0, Math.PI * 2);
+          ctx.arc(cx, cy, HEX_SIZE * 0.5, 0, Math.PI * 2);
           ctx.fill();
-          continue;
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.fillStyle = '#fff';
+          ctx.font = `${Math.round(HEX_SIZE * 0.6)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(BUILDING_GLYPHS[b.type], cx, cy + 1);
         }
-        ctx.fillStyle = ownerFill(b.owner);
-        ctx.beginPath();
-        ctx.arc(cx, cy, HEX_SIZE * 0.55, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.fillStyle = '#fff';
-        ctx.font = `${Math.round(HEX_SIZE * 0.7)}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(BUILDING_GLYPHS[b.type], cx, cy + 1);
         const maxHp = BUILDING_SPEC[b.type].hp;
         if (b.hp < maxHp) {
           const w = HEX_SIZE * 0.9;
@@ -309,31 +390,70 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onRectSe
         }
       }
 
+      // Villagers — cluster by current physical position so dots don't overlap.
       const tweenProgress = Math.min(1, (performance.now() - tickStartAtRef.current) / tickMsRef.current);
       const prevPositions = prevPositionsRef.current;
-
-      for (const v of cur.villagers) {
-        if (!cur.visible[keyOf(v)]) continue;
-        const prev = prevPositions.get(v.id) ?? { q: v.q, r: v.r };
-        const a = axialToPixel(prev, HEX_SIZE);
-        const b = axialToPixel({ q: v.q, r: v.r }, HEX_SIZE);
-        const cx = a.x + (b.x - a.x) * tweenProgress;
-        const cy = a.y + (b.y - a.y) * tweenProgress;
-        ctx.fillStyle = v.owner === 'player' ? '#93c5fd' : '#fca5a5';
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(cx, cy, HEX_SIZE * 0.18, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        if (v.carrying) {
-          ctx.fillStyle = '#fde047';
+      const visibleVillagers = cur.villagers.filter((v) => cur.visible[keyOf(v)]);
+      const clusters = new Map<string, Villager[]>();
+      for (const v of visibleVillagers) {
+        const k = keyOf(v);
+        const arr = clusters.get(k);
+        if (arr) arr.push(v);
+        else clusters.set(k, [v]);
+      }
+      for (const [, group] of clusters) {
+        for (let i = 0; i < group.length; i++) {
+          const v = group[i];
+          const offset = clusterOffset(i, group.length);
+          const prev = prevPositions.get(v.id) ?? { q: v.q, r: v.r };
+          const a = axialToPixel(prev, HEX_SIZE);
+          const b = axialToPixel({ q: v.q, r: v.r }, HEX_SIZE);
+          const cx = a.x + (b.x - a.x) * tweenProgress + offset.x * HEX_SIZE;
+          const cy = a.y + (b.y - a.y) * tweenProgress + offset.y * HEX_SIZE;
+          ctx.fillStyle = v.owner === 'player' ? '#93c5fd' : '#fca5a5';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.arc(cx + HEX_SIZE * 0.15, cy - HEX_SIZE * 0.15, HEX_SIZE * 0.07, 0, Math.PI * 2);
+          ctx.arc(cx, cy, HEX_SIZE * 0.16, 0, Math.PI * 2);
           ctx.fill();
+          ctx.stroke();
+          if (v.carrying) {
+            ctx.fillStyle = '#fde047';
+            ctx.beginPath();
+            ctx.arc(cx + HEX_SIZE * 0.13, cy - HEX_SIZE * 0.13, HEX_SIZE * 0.06, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
       }
 
+      // Occupancy badge — small number per tile that has player villagers calling it home.
+      const homeCounts = new Map<string, number>();
+      for (const v of cur.villagers) {
+        if (v.owner !== 'player') continue;
+        const k = `${v.homeQ},${v.homeR}`;
+        homeCounts.set(k, (homeCounts.get(k) ?? 0) + 1);
+      }
+      ctx.font = `bold ${Math.round(HEX_SIZE * 0.36)}px sans-serif`;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'top';
+      for (const [k, count] of homeCounts) {
+        const [qStr, rStr] = k.split(',');
+        const q = Number(qStr);
+        const r = Number(rStr);
+        if (!cur.visible[`${q},${r}`]) continue;
+        const cap = capacityOf(cur, q, r);
+        const { x, y } = axialToPixel({ q, r }, HEX_SIZE);
+        const tx = x + HEX_SIZE * 0.65;
+        const ty = y - HEX_SIZE * 0.85;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.beginPath();
+        ctx.arc(tx - HEX_SIZE * 0.18, ty + HEX_SIZE * 0.22, HEX_SIZE * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = count > cap ? '#fca5a5' : '#e5e7eb';
+        ctx.fillText(`${count}/${cap}`, tx, ty);
+      }
+
+      // Armies.
       for (const army of cur.armies) {
         if (!cur.visible[keyOf(army)]) continue;
         const prev = prevPositions.get(army.id) ?? { q: army.q, r: army.r };
@@ -368,6 +488,23 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onRectSe
         }
       }
 
+      // Float icons (resource production indicators).
+      const nowMs = performance.now();
+      for (const icon of floatIconsRef.current) {
+        const t = (nowMs - icon.startedAt) / FLOAT_ICON_TTL_MS;
+        if (t < 0 || t > 1) continue;
+        const alpha = 1 - t;
+        const lift = HEX_SIZE * 0.7 * t;
+        ctx.globalAlpha = alpha;
+        ctx.font = `${Math.round(HEX_SIZE * 0.6)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#fff';
+        ctx.fillText(ICON_CHARS[icon.kind], icon.x, icon.y - lift - HEX_SIZE * 0.5);
+        ctx.globalAlpha = 1;
+      }
+
+      // Selected tile highlight.
       if (sel.kind === 'tile') {
         const { x: cx, y: cy } = axialToPixel({ q: sel.q, r: sel.r }, HEX_SIZE);
         drawHexPath(ctx, cx, cy);
@@ -376,52 +513,30 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onRectSe
         ctx.stroke();
       }
 
-      const drag = dragRef.current;
-      if (drag) {
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        const x = Math.min(drag.start.x, drag.current.x);
-        const y = Math.min(drag.start.y, drag.current.y);
-        const w = Math.abs(drag.current.x - drag.start.x);
-        const h = Math.abs(drag.current.y - drag.start.y);
-        ctx.fillStyle = 'rgba(96,165,250,0.12)';
-        ctx.fillRect(x, y, w, h);
-        ctx.strokeStyle = 'rgba(96,165,250,0.7)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, w, h);
-        ctx.translate(-cam.x, -cam.y);
-      }
-
-      if (sel.kind === 'rect_select') {
-        for (const id of sel.villagerIds) {
-          const vlg = cur.villagers.find((vv) => vv.id === id);
-          if (!vlg) continue;
-          const prev = prevPositions.get(vlg.id) ?? { q: vlg.q, r: vlg.r };
-          const a = axialToPixel(prev, HEX_SIZE);
-          const b = axialToPixel({ q: vlg.q, r: vlg.r }, HEX_SIZE);
-          const cx = a.x + (b.x - a.x) * tweenProgress;
-          const cy = a.y + (b.y - a.y) * tweenProgress;
-          ctx.strokeStyle = '#fde047';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.arc(cx, cy, HEX_SIZE * 0.26, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      }
-
-      if (sel.kind === 'transfer_source') {
-        const src = cur.buildings.find((b) => b.id === sel.buildingId);
-        if (src) {
-          const { x: cx, y: cy } = axialToPixel({ q: src.q, r: src.r }, HEX_SIZE);
-          ctx.beginPath();
-          ctx.arc(cx, cy, HEX_SIZE * 0.7, 0, Math.PI * 2);
-          ctx.strokeStyle = '#60a5fa';
+      // Move-source highlight + destination tinting.
+      if (sel.kind === 'move_source') {
+        const { x: cx, y: cy } = axialToPixel({ q: sel.q, r: sel.r }, HEX_SIZE);
+        drawHexPath(ctx, cx, cy);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([5, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const hover = hoverTileRef.current;
+        if (hover) {
+          const occDest = occupantsAt(cur, hover.q, hover.r, 'player');
+          const cap = capacityOf(cur, hover.q, hover.r);
+          const tile = cur.tiles.find((t) => t.q === hover.q && t.r === hover.r);
+          const ok = tile && tile.type !== 'water' && occDest < cap;
+          const { x: hx, y: hy } = axialToPixel(hover, HEX_SIZE);
+          drawHexPath(ctx, hx, hy);
+          ctx.strokeStyle = ok ? '#22c55e' : '#dc2626';
           ctx.lineWidth = 2;
-          ctx.setLineDash([4, 3]);
           ctx.stroke();
-          ctx.setLineDash([]);
         }
       }
 
+      // Build hover preview.
       if (sel.kind === 'build' && hoverTileRef.current) {
         const spec = BUILDING_SPEC[sel.building];
         if (spec.worksOn) {
@@ -462,58 +577,8 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onRectSe
     return { q, r };
   };
 
-  const screenToWorld = (clientX: number, clientY: number): { wx: number; wy: number } | null => {
-    const cvs = canvasRef.current;
-    if (!cvs) return null;
-    const rect = cvs.getBoundingClientRect();
-    const sx = clientX - rect.left;
-    const sy = clientY - rect.top;
-    const cam = cameraRef.current;
-    return { wx: sx + cam.x, wy: sy + cam.y };
-  };
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const cvs = canvasRef.current;
-    if (!cvs) return;
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return;
-    const sel = selectionRef.current;
-    if (sel.kind === 'build' || sel.kind === 'send' || sel.kind === 'transfer_source') return;
-    const rect = cvs.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    dragRef.current = { start: { x, y }, current: { x, y } };
-  };
-
-  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const cvs = canvasRef.current;
-    if (!cvs) return;
-    if (e.button !== 0) {
-      dragRef.current = null;
-      return;
-    }
-    const drag = dragRef.current;
-    dragRef.current = null;
-    if (drag) {
-      const dx = drag.current.x - drag.start.x;
-      const dy = drag.current.y - drag.start.y;
-      const dist2 = dx * dx + dy * dy;
-      if (dist2 >= 16) {
-        const cam = cameraRef.current;
-        const x0 = Math.min(drag.start.x, drag.current.x) + cam.x;
-        const x1 = Math.max(drag.start.x, drag.current.x) + cam.x;
-        const y0 = Math.min(drag.start.y, drag.current.y) + cam.y;
-        const y1 = Math.max(drag.start.y, drag.current.y) + cam.y;
-        const cur = stateRef.current;
-        const ids: string[] = [];
-        for (const v of cur.villagers) {
-          if (v.owner !== 'player') continue;
-          const { x, y } = axialToPixel({ q: v.q, r: v.r }, HEX_SIZE);
-          if (x >= x0 && x <= x1 && y >= y0 && y <= y1) ids.push(v.id);
-        }
-        if (onRectSelectRef.current) onRectSelectRef.current(ids);
-        return;
-      }
-    }
     const hit = screenToAxial(e.clientX, e.clientY);
     if (!hit) return;
     onTileClick(hit.q, hit.r, e.shiftKey);
@@ -526,14 +591,8 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onRectSe
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     mousePosRef.current = { x, y };
-    if (dragRef.current) {
-      dragRef.current.current = { x, y };
-    }
     const hit = screenToAxial(e.clientX, e.clientY);
     hoverTileRef.current = hit;
-    if (!onHoverRef.current) return;
-    if (!hit) onHoverRef.current(null, null);
-    else onHoverRef.current(hit.q, hit.r);
   };
 
   const handleEnter = () => {
@@ -544,27 +603,56 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onRectSe
     mouseInsideRef.current = false;
     mousePosRef.current = null;
     hoverTileRef.current = null;
-    if (onHoverRef.current) onHoverRef.current(null, null);
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
-      onMouseMove={handleMove}
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
-      style={{
-        width: VIEWPORT_WIDTH,
-        height: VIEWPORT_HEIGHT,
-        display: 'block',
-        borderRadius: 8,
-        cursor:
-          selection.kind === 'build' || selection.kind === 'send' || selection.kind === 'transfer_source'
-            ? 'crosshair'
-            : 'pointer',
-      }}
-    />
+    <div style={{ position: 'relative', width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }}>
+      <canvas
+        ref={canvasRef}
+        onClick={handleClick}
+        onMouseMove={handleMove}
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
+        style={{
+          width: VIEWPORT_WIDTH,
+          height: VIEWPORT_HEIGHT,
+          display: 'block',
+          borderRadius: 8,
+          cursor:
+            selection.kind === 'build' || selection.kind === 'send' || selection.kind === 'move_source'
+              ? 'crosshair'
+              : 'pointer',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          right: 12,
+          bottom: 12,
+          pointerEvents: 'none',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+          alignItems: 'flex-end',
+          maxWidth: 280,
+        }}
+      >
+        {state.notifications.map((n) => (
+          <div
+            key={n.id}
+            style={{
+              background: 'rgba(15,23,42,0.85)',
+              color: '#fde68a',
+              padding: '4px 8px',
+              borderRadius: 4,
+              fontSize: 12,
+              border: '1px solid rgba(245,158,11,0.4)',
+            }}
+          >
+            {n.text}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

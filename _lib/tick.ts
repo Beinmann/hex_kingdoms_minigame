@@ -1,17 +1,15 @@
 import { distance, inBounds, keyOf } from './hex';
 import { resolveCombat } from './combat';
 import { rivalDecide } from './ai';
-import { tickVillagers } from './villager';
+import { drainMoveQueues, evictFromBuilding, pruneToasts, tickVillagers } from './villager';
 import {
   BASE_VISION,
   BUILDING_SPEC,
-  SOLDIER_POP,
   type Army,
   type Building,
   type GameState,
   type MonsterLair,
   type Owner,
-  type PlayerState,
 } from './types';
 
 function clone<T>(x: T): T {
@@ -44,23 +42,6 @@ export function computePopCap(state: GameState, owner: Owner): number {
   return cap;
 }
 
-function consumeFood(state: GameState, owner: Owner, pstate: PlayerState): void {
-  const eaters = countLiving(state, owner);
-  if (eaters <= 0) return;
-  if (pstate.resources.food >= eaters) {
-    pstate.resources.food -= eaters;
-    return;
-  }
-  pstate.resources.food = 0;
-  const villagerIdx = state.villagers.findIndex((v) => v.owner === owner);
-  if (villagerIdx >= 0) {
-    state.villagers.splice(villagerIdx, 1);
-    return;
-  }
-  const soldierArmy = state.armies.find((a) => a.owner === owner && a.soldiers > 0);
-  if (soldierArmy) soldierArmy.soldiers -= 1;
-}
-
 function completeTrainings(state: GameState): void {
   const done = state.trainings.filter((t) => t.ticksLeft <= 0);
   state.trainings = state.trainings.filter((t) => t.ticksLeft > 0);
@@ -73,12 +54,12 @@ function completeTrainings(state: GameState): void {
         owner: t.owner,
         q: at.q,
         r: at.r,
+        homeQ: at.q,
+        homeR: at.r,
+        status: 'idle',
         path: [],
-        state: 'idle',
-        assignedTo: null,
         carrying: null,
-        gatherTicksLeft: 0,
-        wanderCooldown: 0,
+        pauseTicksLeft: 0,
       });
       continue;
     }
@@ -197,7 +178,9 @@ function resolveArmyVsBuilding(state: GameState): void {
 
 function pruneDead(state: GameState): void {
   state.armies = state.armies.filter((a) => a.soldiers > 0);
+  const destroyed = state.buildings.filter((b) => b.hp <= 0);
   state.buildings = state.buildings.filter((b) => b.hp > 0);
+  for (const b of destroyed) evictFromBuilding(state, b.q, b.r);
 }
 
 function recomputePop(state: GameState): void {
@@ -250,13 +233,13 @@ export function advance(state: GameState): GameState {
   const next = clone(state);
   next.tick += 1;
 
+  drainMoveQueues(next);
   tickVillagers(next);
 
   tickTrainings(next);
   completeTrainings(next);
 
-  consumeFood(next, 'player', next.player);
-  consumeFood(next, 'rival', next.rival);
+  // Food drain disabled: villagers only cost food at training.
 
   moveArmies(next);
 
@@ -271,6 +254,7 @@ export function advance(state: GameState): GameState {
 
   recomputePop(next);
   recomputeVisibility(next);
+  pruneToasts(next);
 
   checkVictory(next);
 

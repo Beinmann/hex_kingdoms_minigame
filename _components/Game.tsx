@@ -6,9 +6,9 @@ import SelectionPanel from './SelectionPanel';
 import Sidebar from './Sidebar';
 import { advance } from '../_lib/tick';
 import { createInitialState } from '../_lib/mapgen';
-import { findPath } from '../_lib/hex';
+import { findPath, key } from '../_lib/hex';
 import { clearSave, loadSave, writeSave } from '../_lib/save';
-import { assignVillager, pickAssignedVillagers, pickIdleVillagers } from '../_lib/villager';
+import { issueMoveCommand } from '../_lib/villager';
 import {
   BUILDING_SPEC,
   SOLDIER_COST,
@@ -109,33 +109,22 @@ function trainVillagerAt(state: GameState, thId: string): GameState | null {
   return next;
 }
 
-function assignToBuilding(state: GameState, buildingId: string, count: number): GameState {
-  const next = JSON.parse(JSON.stringify(state)) as GameState;
-  const idle = pickIdleVillagers(next, 'player', count);
-  for (const v of idle) assignVillager(next, v.id, buildingId);
-  return next;
-}
-
-function recallFromBuilding(state: GameState, buildingId: string, count: number): GameState {
-  const next = JSON.parse(JSON.stringify(state)) as GameState;
-  const assigned = pickAssignedVillagers(next, buildingId, count);
-  for (const v of assigned) assignVillager(next, v.id, null);
-  return next;
-}
-
 function destroyBuilding(state: GameState, buildingId: string): GameState {
   const target = state.buildings.find((b) => b.id === buildingId);
   if (!target || target.owner !== 'player' || target.type === 'townhall') return state;
   const next = JSON.parse(JSON.stringify(state)) as GameState;
+  // Evict villagers whose home was this tile back to their physical position.
   for (const v of next.villagers) {
-    if (v.assignedTo === buildingId) {
-      v.assignedTo = null;
-      v.state = 'idle';
+    if (v.homeQ === target.q && v.homeR === target.r) {
+      v.homeQ = v.q;
+      v.homeR = v.r;
+      v.status = 'idle';
       v.path = [];
       v.carrying = null;
-      v.wanderCooldown = 0;
+      v.pauseTicksLeft = 0;
     }
   }
+  delete next.tileQueues[key(target.q, target.r)];
   next.buildings = next.buildings.filter((b) => b.id !== buildingId);
   if (target.type === 'farm') {
     next.tiles = next.tiles.map((t) =>
@@ -174,6 +163,18 @@ function cancelArmy(state: GameState, armyId: string): GameState {
   };
 }
 
+function tryIssueMove(
+  state: GameState,
+  srcQ: number,
+  srcR: number,
+  destQ: number,
+  destR: number,
+): GameState {
+  const next = JSON.parse(JSON.stringify(state)) as GameState;
+  issueMoveCommand(next, srcQ, srcR, destQ, destR);
+  return next;
+}
+
 export default function Game() {
   const [state, setState] = useState<GameState>(() => createInitialState(1));
   const stateRef = useRef<GameState>(state);
@@ -184,6 +185,7 @@ export default function Game() {
   const [speed, setSpeed] = useState<number>(1);
   const pausedRef = useRef(paused);
   const speedRef = useRef(speed);
+  const selectionRef = useRef<Selection>(selection);
 
   useEffect(() => {
     stateRef.current = state;
@@ -194,6 +196,9 @@ export default function Game() {
   useEffect(() => {
     speedRef.current = speed;
   }, [speed]);
+  useEffect(() => {
+    selectionRef.current = selection;
+  }, [selection]);
 
   useEffect(() => {
     const saved = loadSave();
@@ -278,18 +283,6 @@ export default function Game() {
     }
   }, []);
 
-  const handleAssign = useCallback((buildingId: string, count: number) => {
-    const next = assignToBuilding(stateRef.current, buildingId, count);
-    stateRef.current = next;
-    setState(next);
-  }, []);
-
-  const handleRecall = useCallback((buildingId: string, count: number) => {
-    const next = recallFromBuilding(stateRef.current, buildingId, count);
-    stateRef.current = next;
-    setState(next);
-  }, []);
-
   const handleSendArmy = useCallback((armyId: string) => {
     setSelection({ kind: 'send', armyId });
   }, []);
@@ -298,6 +291,10 @@ export default function Game() {
     const next = cancelArmy(stateRef.current, armyId);
     stateRef.current = next;
     setState(next);
+  }, []);
+
+  const handleStartMove = useCallback((q: number, r: number) => {
+    setSelection({ kind: 'move_source', q, r });
   }, []);
 
   const handleTileClick = useCallback(
@@ -321,31 +318,11 @@ export default function Game() {
         setSelection({ kind: 'none' });
         return;
       }
-      if (selection.kind === 'transfer_source') {
-        const target = cur.buildings.find((b) => b.q === q && b.r === r && b.owner === 'player');
-        if (target && BUILDING_SPEC[target.type].produces && target.id !== selection.buildingId) {
-          const next = JSON.parse(JSON.stringify(cur)) as GameState;
-          const assigned = pickAssignedVillagers(next, selection.buildingId, Number.MAX_SAFE_INTEGER);
-          for (const v of assigned) assignVillager(next, v.id, target.id);
-          stateRef.current = next;
-          setState(next);
-          setSelection({ kind: 'tile', q, r });
-          return;
-        }
-        setSelection({ kind: 'none' });
-        return;
-      }
-      if (selection.kind === 'rect_select') {
-        const target = cur.buildings.find((b) => b.q === q && b.r === r && b.owner === 'player');
-        if (target && BUILDING_SPEC[target.type].produces) {
-          const next = JSON.parse(JSON.stringify(cur)) as GameState;
-          for (const id of selection.villagerIds) assignVillager(next, id, target.id);
-          stateRef.current = next;
-          setState(next);
-          setSelection({ kind: 'tile', q, r });
-          return;
-        }
-        setSelection({ kind: 'tile', q, r });
+      if (selection.kind === 'move_source') {
+        const next = tryIssueMove(cur, selection.q, selection.r, q, r);
+        stateRef.current = next;
+        setState(next);
+        setSelection({ kind: 'tile', q: selection.q, r: selection.r });
         return;
       }
       setSelection({ kind: 'tile', q, r });
@@ -353,24 +330,12 @@ export default function Game() {
     [selection],
   );
 
-  const handleStartTransfer = useCallback((buildingId: string) => {
-    setSelection({ kind: 'transfer_source', buildingId });
-  }, []);
-
-  const handleRectSelect = useCallback((villagerIds: string[]) => {
-    if (villagerIds.length === 0) {
-      setSelection({ kind: 'none' });
-      return;
-    }
-    setSelection({ kind: 'rect_select', villagerIds });
-  }, []);
-
   const HOTKEY_TO_BUILDING: Record<string, BuildingType> = {
     h: 'house',
     f: 'farm',
     l: 'lumber',
     q: 'quarry',
-    m: 'iron_mine',
+    i: 'iron_mine',
     b: 'barracks',
     t: 'watchtower',
   };
@@ -388,7 +353,16 @@ export default function Game() {
         setPaused((p) => !p);
         return;
       }
-      const t = HOTKEY_TO_BUILDING[e.key.toLowerCase()];
+      const k = e.key.toLowerCase();
+      if (k === 'm') {
+        const sel = selectionRef.current;
+        if (sel.kind === 'tile') {
+          e.preventDefault();
+          setSelection({ kind: 'move_source', q: sel.q, r: sel.r });
+          return;
+        }
+      }
+      const t = HOTKEY_TO_BUILDING[k];
       if (t) {
         e.preventDefault();
         const sticky = e.shiftKey;
@@ -408,7 +382,6 @@ export default function Game() {
             selection={selection}
             tickMs={TICK_MS / speed}
             onTileClick={handleTileClick}
-            onRectSelect={handleRectSelect}
           />
         </div>
         <SelectionPanel
@@ -417,9 +390,7 @@ export default function Game() {
           width={VIEWPORT_WIDTH}
           onCancelSelection={handleCancelSelection}
           onRecruit={handleRecruit}
-          onAssign={handleAssign}
-          onRecall={handleRecall}
-          onStartTransfer={handleStartTransfer}
+          onStartMove={handleStartMove}
           onTrainVillager={handleTrainVillager}
           onDestroy={handleDestroy}
         />

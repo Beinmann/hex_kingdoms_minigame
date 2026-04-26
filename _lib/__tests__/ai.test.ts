@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createInitialState } from '../mapgen';
 import { rivalDecide } from '../ai';
+import { spawnVillager } from '../villager';
 import { BUILDING_SPEC } from '../types';
 
 describe('rivalDecide', () => {
@@ -40,35 +41,15 @@ describe('rivalDecide', () => {
     expect(villagerTrainings.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('assigns idle rival villagers to its extractors', () => {
+  it('rival villagers are frozen — rivalDecide does not move them', () => {
     const s = createInitialState(123);
-    s.rival.resources = { food: 100, wood: 100, stone: 100, iron: 100 };
-    const grass = s.tiles.find(
-      (t) => t.type === 'grass' && !s.buildings.some((b) => b.q === t.q && b.r === t.r),
-    )!;
-    s.buildings.push({
-      id: 'rl1',
-      type: 'lumber',
-      owner: 'rival',
-      q: grass.q,
-      r: grass.r,
-      hp: BUILDING_SPEC.lumber.hp,
-    });
     const rivalTH = s.buildings.find((b) => b.owner === 'rival' && b.type === 'townhall')!;
-    s.villagers.push({
-      id: 'rv1',
-      owner: 'rival',
-      q: rivalTH.q,
-      r: rivalTH.r,
-      path: [],
-      state: 'idle',
-      assignedTo: null,
-      carrying: null,
-      gatherTicksLeft: 0,
-      wanderCooldown: 0,
-    });
+    const v = spawnVillager(s, 'rival', rivalTH.q, rivalTH.r);
+    s.villagers.push(v);
     rivalDecide(s);
-    const assigned = s.villagers.filter((v) => v.owner === 'rival' && v.assignedTo === 'rl1').length;
-    expect(assigned).toBeGreaterThan(0);
+    const after = s.villagers.find((vv) => vv.id === v.id)!;
+    expect(after.status).toBe('idle');
+    expect(after.homeQ).toBe(rivalTH.q);
+    expect(after.homeR).toBe(rivalTH.r);
   });
 });

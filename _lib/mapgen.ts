@@ -180,12 +180,12 @@ function spawnInitialVillagers(
       owner,
       q: capital.q,
       r: capital.r,
+      homeQ: capital.q,
+      homeR: capital.r,
+      status: 'idle',
       path: [],
-      state: 'idle',
-      assignedTo: null,
       carrying: null,
-      gatherTicksLeft: 0,
-      wanderCooldown: i,
+      pauseTicksLeft: 0,
     });
   }
   return { villagers, nextId: id };
@@ -264,6 +264,8 @@ export function createInitialState(seed: number = Date.now()): GameState {
     rival,
     rivalAI: { nextRaidTick: 45 },
     visible,
+    tileQueues: {},
+    notifications: [],
     nextId: rivalVillagers.nextId,
   };
 }

@@ -15,7 +15,6 @@ import {
   type TileType,
 } from './types';
 import { newId, popRequired } from './tick';
-import { assignVillager } from './villager';
 
 const BUILD_PRIORITY: BuildingType[] = [
   'house',
@@ -151,24 +150,12 @@ function tryTrainVillager(state: GameState, owner: Owner, pstate: PlayerState): 
   return true;
 }
 
-function aiAssignIdleVillagers(state: GameState, owner: Owner): void {
-  const idle = state.villagers.filter((v) => v.owner === owner && v.assignedTo === null);
-  if (idle.length === 0) return;
-  const extractors = state.buildings.filter((b) => b.owner === owner && BUILDING_SPEC[b.type].produces);
-  if (extractors.length === 0) return;
-  for (const v of idle) {
-    let best: { id: string; max: number; current: number } | null = null;
-    for (const b of extractors) {
-      const max = BUILDING_SPEC[b.type].pop;
-      const current = state.villagers.filter((vv) => vv.assignedTo === b.id).length;
-      if (max > 0 && current >= max) continue;
-      const score = current;
-      if (best === null || score < best.current) {
-        best = { id: b.id, max, current };
-      }
-    }
-    if (best) assignVillager(state, v.id, best.id);
-  }
+// Rival villagers are temporarily frozen — see plan-with-me-and-eager-lake.md.
+// The function intentionally does nothing; left in place so the call site stays
+// readable and so reintroducing rival villager AI later is a one-spot change.
+function aiAssignIdleVillagers(_state: GameState, _owner: Owner): void {
+  void _state;
+  void _owner;
 }
 
 function trySendArmy(state: GameState): boolean {

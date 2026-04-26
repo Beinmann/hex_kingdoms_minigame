@@ -27,7 +27,7 @@ const HOTKEY_FOR: Record<BuildingType, string> = {
   farm: 'F',
   lumber: 'L',
   quarry: 'Q',
-  iron_mine: 'M',
+  iron_mine: 'I',
   barracks: 'B',
   watchtower: 'T',
   townhall: '',
@@ -80,7 +80,7 @@ export default function Sidebar({
   onSendArmy,
   onCancelArmy,
 }: Props) {
-  const idleVillagers = state.villagers.filter((v) => v.owner === 'player' && v.assignedTo === null).length;
+  const idleVillagers = state.villagers.filter((v) => v.owner === 'player' && v.status === 'idle').length;
   const playerArmies = state.armies.filter((a) => a.owner === 'player');
   const playerTrainings = state.trainings.filter((t) => t.owner === 'player');
 

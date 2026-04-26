@@ -12,7 +12,7 @@ import {
   type Resources,
   type Selection,
 } from '../_lib/types';
-import { countAssigned } from '../_lib/villager';
+import { capacityOf, occupantsAt } from '../_lib/villager';
 
 type Props = {
   state: GameState;
@@ -20,9 +20,7 @@ type Props = {
   width: number;
   onCancelSelection: () => void;
   onRecruit: (barracksId: string) => void;
-  onAssign: (buildingId: string, count: number) => void;
-  onRecall: (buildingId: string, count: number) => void;
-  onStartTransfer: (buildingId: string) => void;
+  onStartMove: (q: number, r: number) => void;
   onTrainVillager: (thId: string) => void;
   onDestroy: (buildingId: string) => void;
 };
@@ -41,21 +39,29 @@ export default function SelectionPanel({
   width,
   onCancelSelection,
   onRecruit,
-  onAssign,
-  onRecall,
-  onStartTransfer,
+  onStartMove,
   onTrainVillager,
   onDestroy,
 }: Props) {
-  const selectedTile =
-    selection.kind === 'tile' ? state.tiles.find((t) => t.q === selection.q && t.r === selection.r) : null;
-  const selectedBuilding =
-    selection.kind === 'tile' ? state.buildings.find((b) => b.q === selection.q && b.r === selection.r) : null;
-  const selectedLair =
-    selection.kind === 'tile' ? state.lairs.find((l) => l.q === selection.q && l.r === selection.r) : null;
-  const transferSource =
-    selection.kind === 'transfer_source' ? state.buildings.find((b) => b.id === selection.buildingId) : null;
-  const idleVillagers = state.villagers.filter((v) => v.owner === 'player' && v.assignedTo === null).length;
+  const tileCoord =
+    selection.kind === 'tile'
+      ? { q: selection.q, r: selection.r }
+      : selection.kind === 'move_source'
+        ? { q: selection.q, r: selection.r }
+        : null;
+  const selectedTile = tileCoord
+    ? state.tiles.find((t) => t.q === tileCoord.q && t.r === tileCoord.r) ?? null
+    : null;
+  const selectedBuilding = tileCoord
+    ? state.buildings.find((b) => b.q === tileCoord.q && b.r === tileCoord.r) ?? null
+    : null;
+  const selectedLair = tileCoord
+    ? state.lairs.find((l) => l.q === tileCoord.q && l.r === tileCoord.r) ?? null
+    : null;
+
+  const tileOcc = tileCoord ? occupantsAt(state, tileCoord.q, tileCoord.r, 'player') : 0;
+  const tileCap = tileCoord ? capacityOf(state, tileCoord.q, tileCoord.r) : 0;
+  const isPlayerTile = tileCoord && (tileOcc > 0 || (selectedBuilding && selectedBuilding.owner === 'player'));
 
   return (
     <section
@@ -64,7 +70,7 @@ export default function SelectionPanel({
     >
       <h3 className="font-semibold text-zinc-200">Selection</h3>
       {selection.kind === 'none' && (
-        <p className="text-xs text-zinc-500">Click a tile to inspect it.</p>
+        <p className="text-xs text-zinc-500">Click a tile to inspect it. Press <kbd className="text-zinc-300">M</kbd> on a selected tile to send a villager elsewhere.</p>
       )}
       {selection.kind === 'build' && (
         <p className="text-xs text-zinc-400">
@@ -80,28 +86,12 @@ export default function SelectionPanel({
           <button onClick={onCancelSelection} className="underline">cancel</button>
         </p>
       )}
-      {transferSource && (
-        <div className="text-xs text-blue-300 space-y-1">
-          <div>
-            Transferring <span className="text-zinc-100">{countAssigned(state, transferSource.id)}</span> villagers from{' '}
-            <span className="text-zinc-100">{BUILDING_SPEC[transferSource.type].label}</span>
-          </div>
-          <div className="text-zinc-400">
-            Click another player building to confirm.{' '}
-            <button onClick={onCancelSelection} className="underline">cancel</button>
-          </div>
-        </div>
-      )}
-      {selection.kind === 'rect_select' && (
-        <div className="text-xs text-amber-300 space-y-1">
-          <div>
-            <span className="text-zinc-100">{selection.villagerIds.length}</span> villagers selected
-          </div>
-          <div className="text-zinc-400">
-            Click a player building to assign them.{' '}
-            <button onClick={onCancelSelection} className="underline">cancel</button>
-          </div>
-        </div>
+      {selection.kind === 'move_source' && (
+        <p className="text-xs text-amber-300">
+          Choose a destination tile for one villager from{' '}
+          <span className="font-mono text-zinc-100">({selection.q},{selection.r})</span>.{' '}
+          <button onClick={onCancelSelection} className="underline">cancel</button>
+        </p>
       )}
       {selectedTile && (
         <div className="text-xs space-y-1">
@@ -116,6 +106,11 @@ export default function SelectionPanel({
               </span>
             )}
           </div>
+          {tileCoord && (
+            <div className="text-zinc-400">
+              Occupants <span className="text-zinc-100">{tileOcc}</span> / <span className="text-zinc-300">{tileCap}</span>
+            </div>
+          )}
           {selectedLair && (
             <div className="text-rose-300">Monster lair · garrison {selectedLair.garrison}</div>
           )}
@@ -128,39 +123,6 @@ export default function SelectionPanel({
               <div className="text-zinc-500">
                 HP {selectedBuilding.hp} / {BUILDING_SPEC[selectedBuilding.type].hp}
               </div>
-              {selectedBuilding.owner === 'player' && BUILDING_SPEC[selectedBuilding.type].produces && (
-                <div className="mt-2 space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-zinc-400">
-                      Workers <span className="text-zinc-100">{countAssigned(state, selectedBuilding.id)}</span>
-                    </span>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => onRecall(selectedBuilding.id, 1)}
-                        disabled={countAssigned(state, selectedBuilding.id) === 0}
-                        className="px-2 py-0.5 rounded border border-zinc-700 hover:bg-zinc-800 text-xs disabled:opacity-40"
-                      >
-                        −
-                      </button>
-                      <button
-                        onClick={() => onAssign(selectedBuilding.id, 1)}
-                        disabled={idleVillagers === 0}
-                        className="px-2 py-0.5 rounded border border-zinc-700 hover:bg-zinc-800 text-xs disabled:opacity-40"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  {countAssigned(state, selectedBuilding.id) > 0 && (
-                    <button
-                      onClick={() => onStartTransfer(selectedBuilding.id)}
-                      className="w-full px-2 py-0.5 rounded border border-blue-700 text-blue-300 hover:bg-blue-900/30 text-xs"
-                    >
-                      Transfer all → click target
-                    </button>
-                  )}
-                </div>
-              )}
               {selectedBuilding.owner === 'player' && selectedBuilding.type === 'barracks' && (
                 <button
                   onClick={() => onRecruit(selectedBuilding.id)}
@@ -186,6 +148,14 @@ export default function SelectionPanel({
                 </button>
               )}
             </div>
+          )}
+          {selection.kind === 'tile' && tileCoord && isPlayerTile && tileOcc > 0 && (
+            <button
+              onClick={() => onStartMove(tileCoord.q, tileCoord.r)}
+              className="mt-2 w-full px-2 py-1 rounded border border-amber-700 text-amber-200 hover:bg-amber-900/30 text-xs"
+            >
+              Move villager → <span className="text-amber-400">(M)</span>
+            </button>
           )}
         </div>
       )}
