@@ -124,7 +124,9 @@ function destroyBuilding(state: GameState, buildingId: string): GameState {
       v.pauseTicksLeft = 0;
     }
   }
-  delete next.tileQueues[key(target.q, target.r)];
+  const tk = key(target.q, target.r);
+  delete next.tileQueuesByOwner.player[tk];
+  delete next.tileQueuesByOwner.rival[tk];
   next.buildings = next.buildings.filter((b) => b.id !== buildingId);
   if (target.type === 'farm') {
     next.tiles = next.tiles.map((t) =>

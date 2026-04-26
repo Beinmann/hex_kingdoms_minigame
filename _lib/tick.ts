@@ -244,7 +244,8 @@ export function advance(state: GameState): GameState {
   const next = clone(state);
   next.tick += 1;
 
-  drainMoveQueues(next);
+  drainMoveQueues(next, 'player');
+  drainMoveQueues(next, 'rival');
   tickVillagers(next);
 
   tickTrainings(next);

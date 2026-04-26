@@ -103,8 +103,8 @@ describe('villager helpers', () => {
     s.villagers.push(spawnVillager(s, 'player', a.q, a.r));
     const ok = issueMoveCommand(s, a.q, a.r, a.q + 1, a.r);
     expect(ok).toBe(true);
-    expect(s.tileQueues[`${a.q},${a.r}`]).toBeDefined();
-    expect(s.tileQueues[`${a.q},${a.r}`].length).toBe(1);
+    expect(s.tileQueuesByOwner.player[`${a.q},${a.r}`]).toBeDefined();
+    expect(s.tileQueuesByOwner.player[`${a.q},${a.r}`].length).toBe(1);
   });
 
   it('drainMoveQueues moves a villager logically to dest on first drain', () => {

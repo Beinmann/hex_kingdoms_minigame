@@ -156,63 +156,69 @@ export function issueMoveCommand(
   srcR: number,
   destQ: number,
   destR: number,
+  owner: 'player' | 'rival' = 'player',
 ): boolean {
   if (srcQ === destQ && srcR === destR) {
-    pushToast(state, 'Source and destination are the same.');
+    if (owner === 'player') pushToast(state, 'Source and destination are the same.');
     return false;
   }
-  const occSrc = occupantsAt(state, srcQ, srcR, 'player');
+  const occSrc = occupantsAt(state, srcQ, srcR, owner);
   if (occSrc === 0) {
-    pushToast(state, 'No villager on source tile.');
+    if (owner === 'player') pushToast(state, 'No villager on source tile.');
     return false;
   }
   const destTile = tileAt(state, destQ, destR);
   if (!destTile || destTile.type === 'water') {
-    pushToast(state, 'Cannot move to that tile.');
+    if (owner === 'player') pushToast(state, 'Cannot move to that tile.');
     return false;
   }
   const cap = capacityOf(state, destQ, destR);
-  const occDest = occupantsAt(state, destQ, destR, 'player');
+  const occDest = occupantsAt(state, destQ, destR, owner);
   if (occDest >= cap) {
-    pushToast(state, 'Destination is full.');
+    if (owner === 'player') pushToast(state, 'Destination is full.');
     return false;
   }
+  const queues = state.tileQueuesByOwner[owner];
   const srcKey = key(srcQ, srcR);
-  const queue = state.tileQueues[srcKey] ?? [];
+  const queue = queues[srcKey] ?? [];
   if (queue.length >= occSrc) {
-    pushToast(state, 'No more queue slots on this tile.');
+    if (owner === 'player') pushToast(state, 'No more queue slots on this tile.');
     return false;
   }
-  state.tileQueues[srcKey] = [...queue, { destQ, destR }];
+  queues[srcKey] = [...queue, { destQ, destR }];
   return true;
 }
 
-export function drainMoveQueues(state: GameState): void {
+export function drainMoveQueues(state: GameState, owner: 'player' | 'rival' = 'player'): void {
+  const queues = state.tileQueuesByOwner[owner];
+
   // Trim queues whose source population dropped (deaths, evictions).
-  for (const srcKey of Object.keys(state.tileQueues)) {
-    const queue = state.tileQueues[srcKey];
+  for (const srcKey of Object.keys(queues)) {
+    const queue = queues[srcKey];
     if (!queue || queue.length === 0) {
-      delete state.tileQueues[srcKey];
+      delete queues[srcKey];
       continue;
     }
     const [srcQStr, srcRStr] = srcKey.split(',');
     const srcQ = Number(srcQStr);
     const srcR = Number(srcRStr);
-    const occ = occupantsAt(state, srcQ, srcR, 'player');
+    const occ = occupantsAt(state, srcQ, srcR, owner);
     if (queue.length > occ) {
       const dropped = queue.length - occ;
-      state.tileQueues[srcKey] = queue.slice(0, occ);
-      for (let i = 0; i < dropped; i++) {
-        pushToast(state, 'Move cancelled — source emptied.');
+      queues[srcKey] = queue.slice(0, occ);
+      if (owner === 'player') {
+        for (let i = 0; i < dropped; i++) {
+          pushToast(state, 'Move cancelled — source emptied.');
+        }
       }
     }
   }
 
   // Drain: assign queued commands to non-busy villagers.
-  for (const srcKey of Object.keys(state.tileQueues)) {
-    const queue = state.tileQueues[srcKey];
+  for (const srcKey of Object.keys(queues)) {
+    const queue = queues[srcKey];
     if (!queue || queue.length === 0) {
-      delete state.tileQueues[srcKey];
+      delete queues[srcKey];
       continue;
     }
     const [srcQStr, srcRStr] = srcKey.split(',');
@@ -220,14 +226,14 @@ export function drainMoveQueues(state: GameState): void {
     const srcR = Number(srcRStr);
     while (queue.length > 0) {
       const candidate = state.villagers.find(
-        (v) => v.owner === 'player' && v.homeQ === srcQ && v.homeR === srcR && !isBusy(v),
+        (v) => v.owner === owner && v.homeQ === srcQ && v.homeR === srcR && !isBusy(v),
       );
       if (!candidate) break;
       const cmd = queue.shift()!;
       const cap = capacityOf(state, cmd.destQ, cmd.destR);
-      const occDest = occupantsAt(state, cmd.destQ, cmd.destR, 'player');
+      const occDest = occupantsAt(state, cmd.destQ, cmd.destR, owner);
       if (occDest >= cap) {
-        pushToast(state, 'Move cancelled — destination became full.');
+        if (owner === 'player') pushToast(state, 'Move cancelled — destination became full.');
         continue;
       }
       candidate.homeQ = cmd.destQ;
@@ -240,7 +246,7 @@ export function drainMoveQueues(state: GameState): void {
         onArrival(state, candidate);
       }
     }
-    if (queue.length === 0) delete state.tileQueues[srcKey];
+    if (queue.length === 0) delete queues[srcKey];
   }
 }
 
@@ -464,7 +470,7 @@ export function stepVillager(state: GameState, v: Villager): void {
 
 export function tickVillagers(state: GameState): void {
   for (const v of state.villagers) {
-    if (v.owner !== 'player') continue;
+    if (v.owner !== 'player' && v.owner !== 'rival') continue;
     stepVillager(state, v);
   }
 }
@@ -501,5 +507,7 @@ export function evictFromBuilding(state: GameState, q: number, r: number): void 
       v.pauseTicksLeft = 0;
     }
   }
-  delete state.tileQueues[key(q, r)];
+  const k = key(q, r);
+  delete state.tileQueuesByOwner.player[k];
+  delete state.tileQueuesByOwner.rival[k];
 }

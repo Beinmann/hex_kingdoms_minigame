@@ -1,7 +1,7 @@
 import { MAP_HEIGHT, MAP_WIDTH, type GameState } from './types';
 
-export const SAVE_KEY = 'hex_kingdom_save_v3';
-const LEGACY_KEYS = ['hex_kingdom_save_v1', 'hex_kingdom_save_v2'];
+export const SAVE_KEY = 'hex_kingdom_save_v4';
+const LEGACY_KEYS = ['hex_kingdom_save_v1', 'hex_kingdom_save_v2', 'hex_kingdom_save_v3'];
 
 export function loadSave(): GameState | null {
   if (typeof window === 'undefined') return null;

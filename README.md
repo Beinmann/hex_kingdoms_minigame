@@ -22,7 +22,7 @@ Route: `/projects/hex_kingdom`.
 - Default tile capacity is 3; town hall is 5; farm is 2; producers are 3.
 - A queued move auto-cancels with a toast if the destination becomes full before the villager's turn comes up.
 - Food cost only applies at training time; villagers don't consume food per tick.
-- Win by destroying the rival town hall; lose by losing yours. The rival currently builds and raids but its villagers are frozen in place.
+- Win by destroying the rival town hall; lose by losing yours. The rival has its own villagers, picks producers based on its scarcest resource, defends its territory when your armies come close, and raids weakened buildings preferentially.
 
 ## Code architecture
 
@@ -46,8 +46,8 @@ hex_kingdom/
     ├── tick.ts               advance(state) — pure
     ├── villager.ts           Villager state machine + per-tile move-command system
     ├── combat.ts             resolveCombat helper
-    ├── ai.ts                 rivalDecide(state) — building/training/raiding
-    ├── save.ts               localStorage at SAVE_KEY (currently v3)
+    ├── ai.ts                 rivalDecide(state) — economy / villager assignment / defense / raiding
+    ├── save.ts               localStorage at SAVE_KEY (currently v4)
     └── __tests__/            vitest: hex / tick / combat / ai / villager
 ```
 

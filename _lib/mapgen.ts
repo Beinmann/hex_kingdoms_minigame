@@ -264,7 +264,7 @@ export function createInitialState(seed: number = Date.now()): GameState {
     rival,
     rivalAI: { nextRaidTick: 45 },
     visible,
-    tileQueues: {},
+    tileQueuesByOwner: { player: {}, rival: {} },
     notifications: [],
     nextId: rivalVillagers.nextId,
   };

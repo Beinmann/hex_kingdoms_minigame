@@ -140,7 +140,7 @@ export type GameState = {
   rival: PlayerState;
   rivalAI: RivalAIState;
   visible: Record<string, true>;
-  tileQueues: Record<string, MoveCommand[]>;
+  tileQueuesByOwner: Record<'player' | 'rival', Record<string, MoveCommand[]>>;
   notifications: Notification[];
   nextId: number;
 };
