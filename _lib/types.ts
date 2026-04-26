@@ -244,7 +244,8 @@ export const VILLAGER_TRAIN_TICKS = 4;
 
 export const EXTRACTOR_RADIUS = 3;
 export const GATHER_TICKS = 2;
-export const GATHER_AMOUNT = 1;
+export const GATHER_AMOUNT = 3;
+export const FARM_PRODUCE_INTERVAL_TICKS = 5;
 export const INITIAL_VILLAGERS = 0;
 
 export const ARRIVED_PAUSE_TICKS = 1;

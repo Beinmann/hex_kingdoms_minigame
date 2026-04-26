@@ -4,6 +4,7 @@ import {
   BUILDING_SPEC,
   DEPLETED_TILE,
   EXTRACTOR_RADIUS,
+  FARM_PRODUCE_INTERVAL_TICKS,
   GATHER_AMOUNT,
   GATHER_TICKS,
   NOTIFICATION_TTL_TICKS,
@@ -337,11 +338,16 @@ export function stepVillager(state: GameState, v: Villager): void {
         v.status = 'idle';
         return;
       }
+      if (v.pauseTicksLeft > 0) {
+        v.pauseTicksLeft -= 1;
+        return;
+      }
       const produces = BUILDING_SPEC[home.type].produces;
       if (produces && produces.food) {
         const ps = ownerState(state, v.owner);
         if (ps) ps.resources.food += produces.food;
       }
+      v.pauseTicksLeft = FARM_PRODUCE_INTERVAL_TICKS - 1;
       return;
     }
     case 'work_outbound': {

@@ -218,6 +218,17 @@ function recomputeVisibility(state: GameState): void {
       }
     }
   }
+  for (const v of state.villagers) {
+    if (v.owner !== 'player') continue;
+    const radius = BASE_VISION;
+    for (let dq = -radius; dq <= radius; dq++) {
+      for (let dr = -radius; dr <= radius; dr++) {
+        const c = { q: v.q + dq, r: v.r + dr };
+        if (!inBounds(c, state.mapWidth, state.mapHeight)) continue;
+        if (distance({ q: v.q, r: v.r }, c) <= radius) vis[keyOf(c)] = true;
+      }
+    }
+  }
   state.visible = vis;
 }
 
