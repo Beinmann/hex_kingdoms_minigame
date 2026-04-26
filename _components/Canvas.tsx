@@ -47,6 +47,7 @@ type Props = {
   selection: Selection;
   tickMs: number;
   onTileClick: (q: number, r: number, shift: boolean) => void;
+  onTileRightClick: (q: number, r: number, shift: boolean) => void;
 };
 
 type WorldBounds = { minX: number; minY: number; maxX: number; maxY: number };
@@ -152,7 +153,7 @@ function clusterOffset(idx: number, total: number): { x: number; y: number } {
   return layout[idx % layout.length];
 }
 
-export default function Canvas({ state, selection, tickMs, onTileClick }: Props) {
+export default function Canvas({ state, selection, tickMs, onTileClick, onTileRightClick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef(state);
   const selectionRef = useRef(selection);
@@ -584,6 +585,13 @@ export default function Canvas({ state, selection, tickMs, onTileClick }: Props)
     onTileClick(hit.q, hit.r, e.shiftKey);
   };
 
+  const handleContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const hit = screenToAxial(e.clientX, e.clientY);
+    if (!hit) return;
+    onTileRightClick(hit.q, hit.r, e.shiftKey);
+  };
+
   const handleMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const cvs = canvasRef.current;
     if (!cvs) return;
@@ -610,6 +618,7 @@ export default function Canvas({ state, selection, tickMs, onTileClick }: Props)
       <canvas
         ref={canvasRef}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
         onMouseMove={handleMove}
         onMouseEnter={handleEnter}
         onMouseLeave={handleLeave}

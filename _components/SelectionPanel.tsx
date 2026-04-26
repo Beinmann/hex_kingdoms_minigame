@@ -13,6 +13,7 @@ import {
   type Selection,
 } from '../_lib/types';
 import { capacityOf, occupantsAt } from '../_lib/villager';
+import Tooltip from './Tooltip';
 
 type Props = {
   state: GameState;
@@ -67,7 +68,10 @@ export default function SelectionPanel({
     >
       <h3 className="font-semibold text-zinc-200">Selection</h3>
       {selection.kind === 'none' && (
-        <p className="text-xs text-zinc-500">Click a tile to inspect it. Press <kbd className="text-zinc-300">M</kbd> on a selected tile to send a villager elsewhere.</p>
+        <p className="text-xs text-zinc-500">
+          Click a tile to inspect it. Right-click a tile to send a villager from the selected
+          tile (Shift+right-click moves all). Hover any action button for details.
+        </p>
       )}
       {selection.kind === 'build' && (
         <p className="text-xs text-zinc-400">
@@ -85,7 +89,7 @@ export default function SelectionPanel({
       )}
       {selection.kind === 'move_source' && (
         <p className="text-xs text-amber-300">
-          Choose a destination tile for one villager from{' '}
+          Choose a destination tile for {selection.all ? 'all non-busy villagers' : 'one villager'} from{' '}
           <span className="font-mono text-zinc-100">({selection.q},{selection.r})</span>.{' '}
           <button onClick={onCancelSelection} className="underline">cancel</button>
         </p>
@@ -120,29 +124,80 @@ export default function SelectionPanel({
               <div className="text-zinc-500">
                 HP {selectedBuilding.hp} / {BUILDING_SPEC[selectedBuilding.type].hp}
               </div>
-              {selectedBuilding.owner === 'player' && selectedBuilding.type === 'barracks' && (
-                <button
-                  onClick={() => onRecruit(selectedBuilding.id)}
-                  className="mt-2 w-full px-2 py-1 rounded border border-zinc-700 hover:bg-zinc-800 text-xs"
-                >
-                  Recruit soldier ({costString(SOLDIER_COST)}, pop {SOLDIER_POP}, {SOLDIER_TRAIN_TICKS}t)
-                </button>
-              )}
-              {selectedBuilding.owner === 'player' && selectedBuilding.type === 'townhall' && (
-                <button
-                  onClick={() => onTrainVillager(selectedBuilding.id)}
-                  className="mt-2 w-full px-2 py-1 rounded border border-zinc-700 hover:bg-zinc-800 text-xs"
-                >
-                  Train villager ({costString(VILLAGER_COST)}, pop {VILLAGER_POP}, {VILLAGER_TRAIN_TICKS}t)
-                </button>
-              )}
-              {selectedBuilding.owner === 'player' && selectedBuilding.type !== 'townhall' && (
-                <button
-                  onClick={() => onDestroy(selectedBuilding.id)}
-                  className="mt-2 w-full px-2 py-1 rounded border border-rose-800 text-rose-300 hover:bg-rose-900/30 text-xs"
-                >
-                  Destroy
-                </button>
+              {selectedBuilding.owner === 'player' && (
+                <div className="mt-2 space-y-1">
+                  <div className="text-[11px] text-zinc-500">Actions</div>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedBuilding.type === 'townhall' && (
+                      <Tooltip
+                        content={
+                          <div className="space-y-1">
+                            <div className="text-zinc-100 font-medium">Train villager</div>
+                            <div className="text-zinc-400">
+                              Cost: {costString(VILLAGER_COST)} · pop {VILLAGER_POP} ·{' '}
+                              {VILLAGER_TRAIN_TICKS}t
+                            </div>
+                            <div className="text-zinc-400">
+                              Spawns a villager at the townhall after training.
+                            </div>
+                          </div>
+                        }
+                      >
+                        <button
+                          onClick={() => onTrainVillager(selectedBuilding.id)}
+                          className="flex flex-col items-center justify-center w-12 h-16 rounded border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-[10px] leading-tight transition-colors"
+                        >
+                          <span>Train</span>
+                          <span className="text-[9px] leading-none text-zinc-400">[Q]</span>
+                        </button>
+                      </Tooltip>
+                    )}
+                    {selectedBuilding.type === 'barracks' && (
+                      <Tooltip
+                        content={
+                          <div className="space-y-1">
+                            <div className="text-zinc-100 font-medium">Recruit soldier</div>
+                            <div className="text-zinc-400">
+                              Cost: {costString(SOLDIER_COST)} · pop {SOLDIER_POP} ·{' '}
+                              {SOLDIER_TRAIN_TICKS}t
+                            </div>
+                            <div className="text-zinc-400">
+                              Soldier joins the army on this tile when ready.
+                            </div>
+                          </div>
+                        }
+                      >
+                        <button
+                          onClick={() => onRecruit(selectedBuilding.id)}
+                          className="flex flex-col items-center justify-center w-12 h-16 rounded border border-zinc-700 hover:border-zinc-500 text-zinc-200 text-[10px] leading-tight transition-colors"
+                        >
+                          <span>Recruit</span>
+                          <span className="text-[9px] leading-none text-zinc-400">[Q]</span>
+                        </button>
+                      </Tooltip>
+                    )}
+                    {selectedBuilding.type !== 'townhall' && (
+                      <Tooltip
+                        content={
+                          <div className="space-y-1">
+                            <div className="text-zinc-100 font-medium">Destroy building</div>
+                            <div className="text-zinc-400">
+                              Removes the building. Workers stationed here become idle.
+                            </div>
+                          </div>
+                        }
+                      >
+                        <button
+                          onClick={() => onDestroy(selectedBuilding.id)}
+                          className="flex flex-col items-center justify-center w-12 h-16 rounded border border-rose-800 text-rose-300 hover:bg-rose-900/30 text-[10px] leading-tight transition-colors"
+                        >
+                          <span>Destroy</span>
+                          <span className="text-[9px] leading-none text-rose-400">[W]</span>
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           )}

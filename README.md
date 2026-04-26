@@ -8,10 +8,9 @@ Route: `/projects/hex_kingdom`.
 
 - **Click a tile** to inspect it. The Selection panel below the map describes the tile and any building on it.
 - When a player villager or army is on the selected tile, an **Entities panel** appears beneath the Selection panel with the move / build / send actions for those units.
-- **Press `M` while a tile is selected** (or click *Move villager* in the Entities panel), then click another tile, to send one villager from the selected tile to the destination.
-- **Build** by selecting a tile with one of your villagers on it, then clicking a building icon in the Entities panel — or by pressing its hotkey anywhere (`H` house, `F` farm, `L` lumber, `Q` quarry, `I` iron mine, `B` barracks, `T` watchtower) and clicking a valid tile. Hold `Shift` while clicking to keep placing. Hover an icon to see its full description.
-- **Train villagers** at the Town Hall (button in the selection panel).
-- **Recruit soldiers** at a Barracks (same place).
+- **Move a villager**: with a tile selected, press `E` (or click *Move* in the Entities panel) and click a destination — or just **right-click** the destination directly. `R` (or *Move all*, or **Shift+right-click**) sends every non-busy villager from that tile.
+- **Build** by pressing the building's hotkey and clicking a valid tile, or by clicking an icon in the Entities panel: `Z` house, `X` farm, `C` lumber, `V` quarry, `B` iron mine, `N` barracks, `M` watchtower. Hold `Shift` while clicking to keep placing. Hover an icon for its full description.
+- **Building actions** (with the building's tile selected): `Q` = train villager (Town Hall) / recruit soldier (Barracks). `W` = destroy (any non-townhall). Each is also a square button in the Selection panel — hover for details.
 - **Send armies** from the Entities panel of the army's tile. The sidebar's Armies list is a clickable index — click an entry to jump to that army.
 - `Space` = pause/resume. `Esc` = clear selection. `WASD` / arrow keys = pan.
 

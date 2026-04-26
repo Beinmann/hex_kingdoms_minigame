@@ -123,7 +123,7 @@ export type Selection =
   | { kind: 'tile'; q: number; r: number }
   | { kind: 'build'; building: BuildingType; sticky: boolean }
   | { kind: 'send'; armyId: string }
-  | { kind: 'move_source'; q: number; r: number };
+  | { kind: 'move_source'; q: number; r: number; all?: boolean };
 
 export type GameState = {
   tick: number;

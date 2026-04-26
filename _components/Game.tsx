@@ -177,6 +177,30 @@ function tryIssueMove(
   return next;
 }
 
+function tryIssueMoveAll(
+  state: GameState,
+  srcQ: number,
+  srcR: number,
+  destQ: number,
+  destR: number,
+): GameState {
+  const next = JSON.parse(JSON.stringify(state)) as GameState;
+  const nonBusy = next.villagers.filter(
+    (v) =>
+      v.owner === 'player' &&
+      v.homeQ === srcQ &&
+      v.homeR === srcR &&
+      v.status !== 'moving' &&
+      v.status !== 'work_outbound' &&
+      v.status !== 'work_gather' &&
+      v.status !== 'work_inbound',
+  ).length;
+  for (let i = 0; i < nonBusy; i++) {
+    if (!issueMoveCommand(next, srcQ, srcR, destQ, destR)) break;
+  }
+  return next;
+}
+
 export default function Game() {
   const [state, setState] = useState<GameState>(() => createInitialState(1));
   const stateRef = useRef<GameState>(state);
@@ -292,6 +316,10 @@ export default function Game() {
     setSelection({ kind: 'move_source', q, r });
   }, []);
 
+  const handleMoveAll = useCallback((q: number, r: number) => {
+    setSelection({ kind: 'move_source', q, r, all: true });
+  }, []);
+
   const handleSelectArmyTile = useCallback((q: number, r: number) => {
     setSelection({ kind: 'tile', q, r });
   }, []);
@@ -318,7 +346,9 @@ export default function Game() {
         return;
       }
       if (selection.kind === 'move_source') {
-        const next = tryIssueMove(cur, selection.q, selection.r, q, r);
+        const next = selection.all
+          ? tryIssueMoveAll(cur, selection.q, selection.r, q, r)
+          : tryIssueMove(cur, selection.q, selection.r, q, r);
         stateRef.current = next;
         setState(next);
         setSelection({ kind: 'tile', q: selection.q, r: selection.r });
@@ -329,14 +359,31 @@ export default function Game() {
     [selection],
   );
 
+  const handleTileRightClick = useCallback((q: number, r: number, shift: boolean) => {
+    const sel = selectionRef.current;
+    const src =
+      sel.kind === 'tile' || sel.kind === 'move_source'
+        ? { q: sel.q, r: sel.r }
+        : null;
+    if (!src) return;
+    if (src.q === q && src.r === r) return;
+    const cur = stateRef.current;
+    const next = shift
+      ? tryIssueMoveAll(cur, src.q, src.r, q, r)
+      : tryIssueMove(cur, src.q, src.r, q, r);
+    stateRef.current = next;
+    setState(next);
+    setSelection({ kind: 'tile', q: src.q, r: src.r });
+  }, []);
+
   const HOTKEY_TO_BUILDING: Record<string, BuildingType> = {
-    h: 'house',
-    f: 'farm',
-    l: 'lumber',
-    q: 'quarry',
-    i: 'iron_mine',
-    b: 'barracks',
-    t: 'watchtower',
+    z: 'house',
+    x: 'farm',
+    c: 'lumber',
+    v: 'quarry',
+    b: 'iron_mine',
+    n: 'barracks',
+    m: 'watchtower',
   };
 
   useEffect(() => {
@@ -353,11 +400,59 @@ export default function Game() {
         return;
       }
       const k = e.key.toLowerCase();
-      if (k === 'm') {
-        const sel = selectionRef.current;
-        if (sel.kind === 'tile') {
+      const sel = selectionRef.current;
+      const tileSel =
+        sel.kind === 'tile' || sel.kind === 'move_source'
+          ? { q: sel.q, r: sel.r }
+          : null;
+      if (tileSel) {
+        const cur = stateRef.current;
+        const buildingHere = cur.buildings.find(
+          (b) => b.q === tileSel.q && b.r === tileSel.r && b.owner === 'player',
+        );
+        const playerVillagersHere = cur.villagers.some(
+          (v) => v.owner === 'player' && v.homeQ === tileSel.q && v.homeR === tileSel.r,
+        );
+        if (k === 'q') {
+          if (buildingHere?.type === 'townhall') {
+            e.preventDefault();
+            const next = trainVillagerAt(cur, buildingHere.id);
+            if (next) {
+              stateRef.current = next;
+              setState(next);
+            }
+            return;
+          }
+          if (buildingHere?.type === 'barracks') {
+            e.preventDefault();
+            const next = recruitAt(cur, buildingHere.id);
+            if (next) {
+              stateRef.current = next;
+              setState(next);
+            }
+            return;
+          }
+        }
+        if (k === 'w') {
+          if (buildingHere && buildingHere.type !== 'townhall') {
+            e.preventDefault();
+            const next = destroyBuilding(cur, buildingHere.id);
+            if (next !== cur) {
+              stateRef.current = next;
+              setState(next);
+              setSelection({ kind: 'none' });
+            }
+            return;
+          }
+        }
+        if (k === 'e' && playerVillagersHere) {
           e.preventDefault();
-          setSelection({ kind: 'move_source', q: sel.q, r: sel.r });
+          setSelection({ kind: 'move_source', q: tileSel.q, r: tileSel.r });
+          return;
+        }
+        if (k === 'r' && playerVillagersHere) {
+          e.preventDefault();
+          setSelection({ kind: 'move_source', q: tileSel.q, r: tileSel.r, all: true });
           return;
         }
       }
@@ -381,6 +476,7 @@ export default function Game() {
             selection={selection}
             tickMs={TICK_MS / speed}
             onTileClick={handleTileClick}
+            onTileRightClick={handleTileRightClick}
           />
         </div>
         <SelectionPanel
@@ -397,6 +493,7 @@ export default function Game() {
           selection={selection}
           width={VIEWPORT_WIDTH}
           onStartMove={handleStartMove}
+          onMoveAll={handleMoveAll}
           onSelectBuild={handleSelectBuild}
           onSendArmy={handleSendArmy}
           onCancelArmy={handleCancelArmy}

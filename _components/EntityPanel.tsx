@@ -20,19 +20,20 @@ type Props = {
   selection: Selection;
   width: number;
   onStartMove: (q: number, r: number) => void;
+  onMoveAll: (q: number, r: number) => void;
   onSelectBuild: (b: BuildingType) => void;
   onSendArmy: (armyId: string) => void;
   onCancelArmy: (armyId: string) => void;
 };
 
 const HOTKEY_FOR: Record<BuildingType, string> = {
-  house: 'H',
-  farm: 'F',
-  lumber: 'L',
-  quarry: 'Q',
-  iron_mine: 'I',
-  barracks: 'B',
-  watchtower: 'T',
+  house: 'Z',
+  farm: 'X',
+  lumber: 'C',
+  quarry: 'V',
+  iron_mine: 'B',
+  barracks: 'N',
+  watchtower: 'M',
   townhall: '',
 };
 
@@ -109,6 +110,7 @@ function VillagerRow({
   r,
   selection,
   onStartMove,
+  onMoveAll,
   onSelectBuild,
 }: {
   villagers: Villager[];
@@ -117,6 +119,7 @@ function VillagerRow({
   r: number;
   selection: Selection;
   onStartMove: (q: number, r: number) => void;
+  onMoveAll: (q: number, r: number) => void;
   onSelectBuild: (b: BuildingType) => void;
 }) {
   const counts: Partial<Record<string, number>> = {};
@@ -136,16 +139,63 @@ function VillagerRow({
         </span>
         <span className="text-zinc-500">{breakdown}</span>
       </div>
-      <button
-        onClick={() => onStartMove(q, r)}
-        className={`w-full px-2 py-1 rounded border text-xs ${
-          selection.kind === 'move_source' && selection.q === q && selection.r === r
-            ? 'border-amber-500 bg-amber-500/10 text-amber-200'
-            : 'border-amber-700 text-amber-200 hover:bg-amber-900/30'
-        }`}
-      >
-        Move villager → <span className="text-amber-400">(M)</span>
-      </button>
+      <div className="space-y-1">
+        <div className="text-[11px] text-zinc-500">Actions</div>
+        <div className="flex flex-wrap gap-1">
+          <Tooltip
+            content={
+              <div className="space-y-1">
+                <div className="text-zinc-100 font-medium">Move villager</div>
+                <div className="text-zinc-400">
+                  Pick one non-busy villager from this tile and send them to a destination.
+                  Right-click a tile to move 1 directly.
+                </div>
+              </div>
+            }
+          >
+            <button
+              onClick={() => onStartMove(q, r)}
+              className={`flex flex-col items-center justify-center w-12 h-16 rounded border text-[10px] leading-tight transition-colors ${
+                selection.kind === 'move_source' &&
+                !selection.all &&
+                selection.q === q &&
+                selection.r === r
+                  ? 'border-amber-500 bg-amber-500/10 text-amber-200'
+                  : 'border-amber-700 text-amber-200 hover:bg-amber-900/30'
+              }`}
+            >
+              <span>Move</span>
+              <span className="text-[9px] leading-none text-amber-400">[E]</span>
+            </button>
+          </Tooltip>
+          <Tooltip
+            content={
+              <div className="space-y-1">
+                <div className="text-zinc-100 font-medium">Move all villagers</div>
+                <div className="text-zinc-400">
+                  Send every non-busy villager from this tile to a destination. Shift+right-click a
+                  tile to move all directly.
+                </div>
+              </div>
+            }
+          >
+            <button
+              onClick={() => onMoveAll(q, r)}
+              className={`flex flex-col items-center justify-center w-12 h-16 rounded border text-[10px] leading-tight transition-colors ${
+                selection.kind === 'move_source' &&
+                selection.all &&
+                selection.q === q &&
+                selection.r === r
+                  ? 'border-amber-500 bg-amber-500/10 text-amber-200'
+                  : 'border-amber-700 text-amber-200 hover:bg-amber-900/30'
+              }`}
+            >
+              <span>Move all</span>
+              <span className="text-[9px] leading-none text-amber-400">[R]</span>
+            </button>
+          </Tooltip>
+        </div>
+      </div>
       <div className="space-y-1">
         <div className="text-[11px] text-zinc-500">Build</div>
         <div className="flex flex-wrap gap-1">
@@ -254,6 +304,7 @@ export default function EntityPanel({
   selection,
   width,
   onStartMove,
+  onMoveAll,
   onSelectBuild,
   onSendArmy,
   onCancelArmy,
@@ -292,6 +343,7 @@ export default function EntityPanel({
           r={r}
           selection={selection}
           onStartMove={onStartMove}
+          onMoveAll={onMoveAll}
           onSelectBuild={onSelectBuild}
         />
       )}
