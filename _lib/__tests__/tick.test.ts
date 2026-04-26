@@ -43,10 +43,20 @@ describe('advance', () => {
         Math.abs(t.r - forest.r) <= 2,
     )!;
     addBuilding(s, { id: 'l1', type: 'lumber', owner: 'player', q: grassNear.q, r: grassNear.r });
-    const villager = s.villagers.find((v) => v.owner === 'player')!;
-    villager.q = grassNear.q;
-    villager.r = grassNear.r;
-    assignVillager(s, villager.id, 'l1');
+    s.villagers.push({
+      id: 'v1',
+      owner: 'player',
+      q: grassNear.q,
+      r: grassNear.r,
+      path: [],
+      state: 'idle',
+      assignedTo: null,
+      carrying: null,
+      gatherTicksLeft: 0,
+      wanderCooldown: 0,
+    });
+    s.player.resources.food = 1000;
+    assignVillager(s, 'v1', 'l1');
 
     const startWood = s.player.resources.wood;
     let cur: GameState = s;
@@ -56,12 +66,23 @@ describe('advance', () => {
     expect(tileAfter.pool ?? 0).toBeLessThan(startPool);
   });
 
-  it('shrinks pop when food runs out', () => {
+  it('kills a villager when food runs out', () => {
     const s = freshState();
-    const startVillagers = s.villagers.filter((v) => v.owner === 'player').length;
+    s.villagers.push({
+      id: 'v1',
+      owner: 'player',
+      q: 0,
+      r: 0,
+      path: [],
+      state: 'idle',
+      assignedTo: null,
+      carrying: null,
+      gatherTicksLeft: 0,
+      wanderCooldown: 0,
+    });
     s.player.resources.food = 0;
     const next = advance(s);
-    expect(next.villagers.filter((v) => v.owner === 'player').length).toBeLessThan(startVillagers);
+    expect(next.villagers.filter((v) => v.owner === 'player').length).toBe(0);
     expect(next.player.resources.food).toBe(0);
   });
 

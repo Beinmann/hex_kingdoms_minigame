@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Canvas from './Canvas';
+import SelectionPanel from './SelectionPanel';
 import Sidebar from './Sidebar';
 import { advance } from '../_lib/tick';
 import { createInitialState } from '../_lib/mapgen';
@@ -13,6 +14,7 @@ import {
   SOLDIER_COST,
   SOLDIER_POP,
   SOLDIER_TRAIN_TICKS,
+  VIEWPORT_WIDTH,
   VILLAGER_COST,
   VILLAGER_POP,
   VILLAGER_TRAIN_TICKS,
@@ -51,6 +53,9 @@ function placeBuilding(state: GameState, type: BuildingType, q: number, r: numbe
     ...state.buildings,
     { id: `pb_${state.nextId}`, type, owner: 'player', q, r, hp: spec.hp },
   ];
+  if (type === 'farm') {
+    next.tiles = next.tiles.map((t) => (t.q === q && t.r === r ? { ...t, type: 'farm' as const } : t));
+  }
   next.player.popCap = state.player.popCap + (spec.popCapDelta ?? 0);
   next.nextId = state.nextId + 1;
   return next;
@@ -115,6 +120,28 @@ function recallFromBuilding(state: GameState, buildingId: string, count: number)
   const next = JSON.parse(JSON.stringify(state)) as GameState;
   const assigned = pickAssignedVillagers(next, buildingId, count);
   for (const v of assigned) assignVillager(next, v.id, null);
+  return next;
+}
+
+function destroyBuilding(state: GameState, buildingId: string): GameState {
+  const target = state.buildings.find((b) => b.id === buildingId);
+  if (!target || target.owner !== 'player' || target.type === 'townhall') return state;
+  const next = JSON.parse(JSON.stringify(state)) as GameState;
+  for (const v of next.villagers) {
+    if (v.assignedTo === buildingId) {
+      v.assignedTo = null;
+      v.state = 'idle';
+      v.path = [];
+      v.carrying = null;
+      v.wanderCooldown = 0;
+    }
+  }
+  next.buildings = next.buildings.filter((b) => b.id !== buildingId);
+  if (target.type === 'farm') {
+    next.tiles = next.tiles.map((t) =>
+      t.q === target.q && t.r === target.r ? { ...t, type: 'grass' as const } : t,
+    );
+  }
   return next;
 }
 
@@ -232,6 +259,15 @@ export default function Game() {
     if (next) {
       stateRef.current = next;
       setState(next);
+    }
+  }, []);
+
+  const handleDestroy = useCallback((buildingId: string) => {
+    const next = destroyBuilding(stateRef.current, buildingId);
+    if (next !== stateRef.current) {
+      stateRef.current = next;
+      setState(next);
+      setSelection({ kind: 'none' });
     }
   }, []);
 
@@ -358,13 +394,27 @@ export default function Game() {
 
   return (
     <div className="flex gap-6 items-start flex-wrap">
-      <div className="rounded-lg overflow-hidden bg-zinc-950 border border-zinc-800 inline-block">
-        <Canvas
+      <div className="space-y-4">
+        <div className="rounded-lg overflow-hidden bg-zinc-950 border border-zinc-800 inline-block">
+          <Canvas
+            state={state}
+            selection={selection}
+            tickMs={TICK_MS / speed}
+            onTileClick={handleTileClick}
+            onRectSelect={handleRectSelect}
+          />
+        </div>
+        <SelectionPanel
           state={state}
           selection={selection}
-          tickMs={TICK_MS / speed}
-          onTileClick={handleTileClick}
-          onRectSelect={handleRectSelect}
+          width={VIEWPORT_WIDTH}
+          onCancelSelection={handleCancelSelection}
+          onRecruit={handleRecruit}
+          onAssign={handleAssign}
+          onRecall={handleRecall}
+          onStartTransfer={handleStartTransfer}
+          onTrainVillager={handleTrainVillager}
+          onDestroy={handleDestroy}
         />
       </div>
       <Sidebar
@@ -373,17 +423,11 @@ export default function Game() {
         paused={paused}
         speed={speed}
         onSelectBuild={handleSelectBuild}
-        onCancelSelection={handleCancelSelection}
         onTogglePause={handleTogglePause}
         onSetSpeed={handleSetSpeed}
         onRestart={handleRestart}
-        onRecruit={handleRecruit}
         onSendArmy={handleSendArmy}
         onCancelArmy={handleCancelArmy}
-        onAssign={handleAssign}
-        onRecall={handleRecall}
-        onStartTransfer={handleStartTransfer}
-        onTrainVillager={handleTrainVillager}
       />
     </div>
   );

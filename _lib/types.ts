@@ -1,6 +1,6 @@
 export type HexCoord = { q: number; r: number };
 
-export type TileType = 'grass' | 'forest' | 'hill' | 'mountain' | 'water';
+export type TileType = 'grass' | 'forest' | 'hill' | 'mountain' | 'water' | 'farm';
 
 export type Owner = 'player' | 'rival' | 'neutral';
 
@@ -135,7 +135,7 @@ export type GameState = {
 };
 
 export const INITIAL_RESOURCES: Resources = {
-  food: 20,
+  food: 40,
   wood: 40,
   stone: 10,
   iron: 0,
@@ -234,7 +234,7 @@ export const VILLAGER_TRAIN_TICKS = 4;
 export const EXTRACTOR_RADIUS = 3;
 export const GATHER_TICKS = 2;
 export const GATHER_AMOUNT = 1;
-export const INITIAL_VILLAGERS = 3;
+export const INITIAL_VILLAGERS = 0;
 export const IDLE_WANDER_INTERVAL_TICKS = 3;
 
 export const RESOURCE_BY_TILE: Partial<Record<TileType, keyof Resources>> = {

@@ -54,6 +54,19 @@ describe('rivalDecide', () => {
       r: grass.r,
       hp: BUILDING_SPEC.lumber.hp,
     });
+    const rivalTH = s.buildings.find((b) => b.owner === 'rival' && b.type === 'townhall')!;
+    s.villagers.push({
+      id: 'rv1',
+      owner: 'rival',
+      q: rivalTH.q,
+      r: rivalTH.r,
+      path: [],
+      state: 'idle',
+      assignedTo: null,
+      carrying: null,
+      gatherTicksLeft: 0,
+      wanderCooldown: 0,
+    });
     rivalDecide(s);
     const assigned = s.villagers.filter((v) => v.owner === 'rival' && v.assignedTo === 'rl1').length;
     expect(assigned).toBeGreaterThan(0);

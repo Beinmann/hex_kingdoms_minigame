@@ -15,17 +15,9 @@ function fresh(): GameState {
 }
 
 describe('villager helpers', () => {
-  it('spawns INITIAL_VILLAGERS per side at the town hall', () => {
+  it('starts with no villagers — they must be trained at the town hall', () => {
     const s = fresh();
-    const playerCount = s.villagers.filter((v) => v.owner === 'player').length;
-    const rivalCount = s.villagers.filter((v) => v.owner === 'rival').length;
-    expect(playerCount).toBe(3);
-    expect(rivalCount).toBe(3);
-    const playerTH = s.buildings.find((b) => b.owner === 'player' && b.type === 'townhall')!;
-    for (const v of s.villagers.filter((v) => v.owner === 'player')) {
-      expect(v.q).toBe(playerTH.q);
-      expect(v.r).toBe(playerTH.r);
-    }
+    expect(s.villagers.length).toBe(0);
   });
 
   it('chooseSource finds a forest within radius for a lumber camp', () => {
@@ -94,11 +86,23 @@ describe('villager helpers', () => {
       r: grass.r,
       hp: BUILDING_SPEC.farm.hp,
     });
-    const v = s.villagers.find((vv) => vv.owner === 'player')!;
-    assignVillager(s, v.id, 'f1');
+    s.villagers.push({
+      id: 'v1',
+      owner: 'player',
+      q: 0,
+      r: 0,
+      path: [],
+      state: 'idle',
+      assignedTo: null,
+      carrying: null,
+      gatherTicksLeft: 0,
+      wanderCooldown: 0,
+    });
+    assignVillager(s, 'v1', 'f1');
+    const v = s.villagers.find((vv) => vv.id === 'v1')!;
     expect(v.assignedTo).toBe('f1');
     expect(['walking_to_reassignment', 'walking_to_source']).toContain(v.state);
-    assignVillager(s, v.id, null);
+    assignVillager(s, 'v1', null);
     expect(v.assignedTo).toBeNull();
     expect(v.state).toBe('idle');
   });
@@ -114,17 +118,52 @@ describe('villager helpers', () => {
       r: grass.r,
       hp: BUILDING_SPEC.farm.hp,
     });
+    s.villagers.push({
+      id: 'v1',
+      owner: 'player',
+      q: 0,
+      r: 0,
+      path: [],
+      state: 'idle',
+      assignedTo: null,
+      carrying: null,
+      gatherTicksLeft: 0,
+      wanderCooldown: 0,
+    });
+    s.villagers.push({
+      id: 'v2',
+      owner: 'player',
+      q: 0,
+      r: 0,
+      path: [],
+      state: 'idle',
+      assignedTo: null,
+      carrying: null,
+      gatherTicksLeft: 0,
+      wanderCooldown: 0,
+    });
     expect(countAssigned(s, 'f1')).toBe(0);
-    expect(pickIdleVillagers(s, 'player', 5).length).toBe(3);
-    const v = s.villagers.find((vv) => vv.owner === 'player')!;
-    assignVillager(s, v.id, 'f1');
-    expect(countAssigned(s, 'f1')).toBe(1);
     expect(pickIdleVillagers(s, 'player', 5).length).toBe(2);
+    assignVillager(s, 'v1', 'f1');
+    expect(countAssigned(s, 'f1')).toBe(1);
+    expect(pickIdleVillagers(s, 'player', 5).length).toBe(1);
   });
 
   it('stepVillager runs without throwing for every state', () => {
     const s = fresh();
-    const v = s.villagers.find((vv) => vv.owner === 'player')!;
+    s.villagers.push({
+      id: 'v1',
+      owner: 'player',
+      q: 0,
+      r: 0,
+      path: [],
+      state: 'idle',
+      assignedTo: null,
+      carrying: null,
+      gatherTicksLeft: 0,
+      wanderCooldown: 0,
+    });
+    const v = s.villagers[0];
     for (const state of ['idle', 'walking_to_source', 'gathering', 'walking_to_dropoff', 'depositing', 'walking_to_reassignment'] as const) {
       v.state = state;
       v.path = [];

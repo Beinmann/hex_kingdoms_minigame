@@ -109,6 +109,10 @@ function tryBuild(state: GameState, owner: Owner, pstate: PlayerState): boolean 
       r: site.r,
       hp: spec.hp,
     });
+    if (type === 'farm') {
+      const tile = state.tiles.find((t) => t.q === site.q && t.r === site.r);
+      if (tile) tile.type = 'farm';
+    }
     pstate.popCap += spec.popCapDelta ?? 0;
     return true;
   }

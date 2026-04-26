@@ -26,6 +26,7 @@ const TILE_COLOURS: Record<TileType, string> = {
   hill: '#8c7a4a',
   mountain: '#6b6f76',
   water: '#2e6c92',
+  farm: '#c8a64a',
 };
 
 const BUILDING_GLYPHS: Record<BuildingType, string> = {
@@ -276,6 +277,13 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onRectSe
       for (const b of cur.buildings) {
         if (!cur.visible[keyOf(b)]) continue;
         const { x: cx, y: cy } = axialToPixel({ q: b.q, r: b.r }, HEX_SIZE);
+        if (b.type === 'farm') {
+          ctx.fillStyle = b.owner === 'player' ? 'rgba(29,78,216,0.7)' : 'rgba(185,28,28,0.7)';
+          ctx.beginPath();
+          ctx.arc(cx, cy, HEX_SIZE * 0.18, 0, Math.PI * 2);
+          ctx.fill();
+          continue;
+        }
         ctx.fillStyle = ownerFill(b.owner);
         ctx.beginPath();
         ctx.arc(cx, cy, HEX_SIZE * 0.55, 0, Math.PI * 2);
