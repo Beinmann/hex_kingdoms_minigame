@@ -1,0 +1,281 @@
+import { distance, inBounds, keyOf } from './hex';
+import { resolveCombat } from './combat';
+import { rivalDecide } from './ai';
+import { tickVillagers } from './villager';
+import {
+  BASE_VISION,
+  BUILDING_SPEC,
+  SOLDIER_POP,
+  type Army,
+  type Building,
+  type GameState,
+  type MonsterLair,
+  type Owner,
+  type PlayerState,
+} from './types';
+
+function clone<T>(x: T): T {
+  if (typeof structuredClone === 'function') return structuredClone(x);
+  return JSON.parse(JSON.stringify(x)) as T;
+}
+
+function addResources(target: { food: number; wood: number; stone: number; iron: number }, src: Partial<{ food: number; wood: number; stone: number; iron: number }>): void {
+  if (src.food) target.food += src.food;
+  if (src.wood) target.wood += src.wood;
+  if (src.stone) target.stone += src.stone;
+  if (src.iron) target.iron += src.iron;
+}
+
+function countLiving(state: GameState, owner: Owner): number {
+  let n = 0;
+  for (const v of state.villagers) if (v.owner === owner) n++;
+  for (const a of state.armies) if (a.owner === owner) n += a.soldiers;
+  for (const t of state.trainings) if (t.owner === owner) n++;
+  return n;
+}
+
+function popRequired(state: GameState, owner: Owner): number {
+  return countLiving(state, owner);
+}
+
+export function computePopCap(state: GameState, owner: Owner): number {
+  let cap = 0;
+  for (const b of state.buildings) if (b.owner === owner) cap += BUILDING_SPEC[b.type].popCapDelta ?? 0;
+  return cap;
+}
+
+function consumeFood(state: GameState, owner: Owner, pstate: PlayerState): void {
+  const eaters = countLiving(state, owner);
+  if (eaters <= 0) return;
+  if (pstate.resources.food >= eaters) {
+    pstate.resources.food -= eaters;
+    return;
+  }
+  pstate.resources.food = 0;
+  const villagerIdx = state.villagers.findIndex((v) => v.owner === owner);
+  if (villagerIdx >= 0) {
+    state.villagers.splice(villagerIdx, 1);
+    return;
+  }
+  const soldierArmy = state.armies.find((a) => a.owner === owner && a.soldiers > 0);
+  if (soldierArmy) soldierArmy.soldiers -= 1;
+}
+
+function completeTrainings(state: GameState): void {
+  const done = state.trainings.filter((t) => t.ticksLeft <= 0);
+  state.trainings = state.trainings.filter((t) => t.ticksLeft > 0);
+  for (const t of done) {
+    const at = state.buildings.find((b) => b.id === t.buildingId);
+    if (!at || at.owner !== t.owner) continue;
+    if (t.kind === 'villager') {
+      state.villagers.push({
+        id: newId(state, 'vlg'),
+        owner: t.owner,
+        q: at.q,
+        r: at.r,
+        path: [],
+        state: 'idle',
+        assignedTo: null,
+        carrying: null,
+        gatherTicksLeft: 0,
+        wanderCooldown: 0,
+      });
+      continue;
+    }
+    const existing = state.armies.find(
+      (a) => a.owner === t.owner && a.q === at.q && a.r === at.r && a.path.length === 0,
+    );
+    if (existing) {
+      existing.soldiers += 1;
+    } else {
+      state.armies.push({
+        id: newId(state, 'army'),
+        owner: t.owner,
+        q: at.q,
+        r: at.r,
+        soldiers: 1,
+        path: [],
+      });
+    }
+  }
+}
+
+function killVillagersOnHostileTiles(state: GameState): void {
+  state.villagers = state.villagers.filter((v) => {
+    return !state.armies.some(
+      (a) => a.q === v.q && a.r === v.r && a.owner !== v.owner && a.soldiers > 0,
+    );
+  });
+}
+
+function tickTrainings(state: GameState): void {
+  for (const t of state.trainings) t.ticksLeft -= 1;
+}
+
+export function newId(state: GameState, prefix: string): string {
+  const n = state.nextId++;
+  return `${prefix}_${n}`;
+}
+
+function isArmyBlocker(state: GameState, owner: Owner) {
+  return (h: { q: number; r: number }): boolean => {
+    const tile = state.tiles.find((t) => t.q === h.q && t.r === h.r);
+    if (!tile || tile.type === 'water') return true;
+    const other = state.armies.find((a) => a.q === h.q && a.r === h.r && a.owner !== owner);
+    return other !== undefined;
+  };
+}
+
+function moveArmies(state: GameState): void {
+  for (const army of state.armies) {
+    if (army.path.length === 0) continue;
+    const nextStep = army.path[0];
+    const blocked = isArmyBlocker(state, army.owner);
+    if (!inBounds(nextStep, state.mapWidth, state.mapHeight) || blocked(nextStep)) {
+      army.path = [];
+      continue;
+    }
+    army.q = nextStep.q;
+    army.r = nextStep.r;
+    army.path = army.path.slice(1);
+  }
+}
+
+function resolveLairs(state: GameState): void {
+  for (const lair of [...state.lairs]) {
+    const attackers = state.armies.filter((a) => a.q === lair.q && a.r === lair.r && a.owner !== 'neutral');
+    if (attackers.length === 0) continue;
+    const atkStrength = attackers.reduce((s, a) => s + a.soldiers, 0);
+    const { a: atkLeft, b: defLeft } = resolveCombat({ strength: atkStrength }, { strength: lair.garrison });
+    distributeLosses(attackers, atkStrength - atkLeft);
+    lair.garrison = defLeft;
+    if (lair.garrison <= 0) {
+      state.lairs = state.lairs.filter((l) => l.id !== lair.id);
+      const winner = attackers.find((a) => a.soldiers > 0);
+      if (winner) {
+        const p = winner.owner === 'player' ? state.player : winner.owner === 'rival' ? state.rival : null;
+        if (p) addResources(p.resources, lair.loot);
+      }
+    }
+  }
+}
+
+function distributeLosses(armies: Army[], totalLosses: number): void {
+  let remaining = totalLosses;
+  for (const a of armies) {
+    if (remaining <= 0) break;
+    const take = Math.min(a.soldiers, remaining);
+    a.soldiers -= take;
+    remaining -= take;
+  }
+}
+
+function resolveArmyVsArmy(state: GameState): void {
+  for (let i = 0; i < state.armies.length; i++) {
+    for (let j = i + 1; j < state.armies.length; j++) {
+      const a = state.armies[i];
+      const b = state.armies[j];
+      if (a.q !== b.q || a.r !== b.r) continue;
+      if (a.owner === b.owner) continue;
+      const { a: aLeft, b: bLeft } = resolveCombat({ strength: a.soldiers }, { strength: b.soldiers });
+      a.soldiers = aLeft;
+      b.soldiers = bLeft;
+    }
+  }
+}
+
+function resolveArmyVsBuilding(state: GameState): void {
+  for (const army of state.armies) {
+    if (army.soldiers <= 0) continue;
+    const target = state.buildings.find(
+      (b) => b.q === army.q && b.r === army.r && b.owner !== army.owner && b.owner !== 'neutral',
+    );
+    if (!target) continue;
+    target.hp -= army.soldiers;
+  }
+}
+
+function pruneDead(state: GameState): void {
+  state.armies = state.armies.filter((a) => a.soldiers > 0);
+  state.buildings = state.buildings.filter((b) => b.hp > 0);
+}
+
+function recomputePop(state: GameState): void {
+  state.player.popCap = computePopCap(state, 'player');
+  state.rival.popCap = computePopCap(state, 'rival');
+  state.player.pop = countLiving(state, 'player');
+  state.rival.pop = countLiving(state, 'rival');
+}
+
+function visionRadius(building: Building): number {
+  return BASE_VISION + (BUILDING_SPEC[building.type].visionBonus ?? 0);
+}
+
+function recomputeVisibility(state: GameState): void {
+  const vis: Record<string, true> = {};
+  for (const b of state.buildings) {
+    if (b.owner !== 'player') continue;
+    const radius = visionRadius(b);
+    for (let dq = -radius; dq <= radius; dq++) {
+      for (let dr = -radius; dr <= radius; dr++) {
+        const c = { q: b.q + dq, r: b.r + dr };
+        if (!inBounds(c, state.mapWidth, state.mapHeight)) continue;
+        if (distance({ q: b.q, r: b.r }, c) <= radius) vis[keyOf(c)] = true;
+      }
+    }
+  }
+  for (const a of state.armies) {
+    if (a.owner !== 'player') continue;
+    const radius = BASE_VISION;
+    for (let dq = -radius; dq <= radius; dq++) {
+      for (let dr = -radius; dr <= radius; dr++) {
+        const c = { q: a.q + dq, r: a.r + dr };
+        if (!inBounds(c, state.mapWidth, state.mapHeight)) continue;
+        if (distance({ q: a.q, r: a.r }, c) <= radius) vis[keyOf(c)] = true;
+      }
+    }
+  }
+  state.visible = vis;
+}
+
+function checkVictory(state: GameState): void {
+  const playerTH = state.buildings.find((b) => b.owner === 'player' && b.type === 'townhall');
+  const rivalTH = state.buildings.find((b) => b.owner === 'rival' && b.type === 'townhall');
+  if (!playerTH) state.phase = 'lost';
+  else if (!rivalTH) state.phase = 'won';
+}
+
+export function advance(state: GameState): GameState {
+  if (state.phase !== 'playing') return state;
+  const next = clone(state);
+  next.tick += 1;
+
+  tickVillagers(next);
+
+  tickTrainings(next);
+  completeTrainings(next);
+
+  consumeFood(next, 'player', next.player);
+  consumeFood(next, 'rival', next.rival);
+
+  moveArmies(next);
+
+  resolveArmyVsArmy(next);
+  resolveLairs(next);
+  resolveArmyVsBuilding(next);
+
+  pruneDead(next);
+  killVillagersOnHostileTiles(next);
+
+  rivalDecide(next);
+
+  recomputePop(next);
+  recomputeVisibility(next);
+
+  checkVictory(next);
+
+  return next;
+}
+
+export { popRequired };
+export type { MonsterLair };
