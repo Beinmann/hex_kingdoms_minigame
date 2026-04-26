@@ -20,7 +20,6 @@ type Props = {
   width: number;
   onCancelSelection: () => void;
   onRecruit: (barracksId: string) => void;
-  onStartMove: (q: number, r: number) => void;
   onTrainVillager: (thId: string) => void;
   onDestroy: (buildingId: string) => void;
 };
@@ -39,7 +38,6 @@ export default function SelectionPanel({
   width,
   onCancelSelection,
   onRecruit,
-  onStartMove,
   onTrainVillager,
   onDestroy,
 }: Props) {
@@ -61,7 +59,6 @@ export default function SelectionPanel({
 
   const tileOcc = tileCoord ? occupantsAt(state, tileCoord.q, tileCoord.r, 'player') : 0;
   const tileCap = tileCoord ? capacityOf(state, tileCoord.q, tileCoord.r) : 0;
-  const isPlayerTile = tileCoord && (tileOcc > 0 || (selectedBuilding && selectedBuilding.owner === 'player'));
 
   return (
     <section
@@ -148,14 +145,6 @@ export default function SelectionPanel({
                 </button>
               )}
             </div>
-          )}
-          {selection.kind === 'tile' && tileCoord && isPlayerTile && tileOcc > 0 && (
-            <button
-              onClick={() => onStartMove(tileCoord.q, tileCoord.r)}
-              className="mt-2 w-full px-2 py-1 rounded border border-amber-700 text-amber-200 hover:bg-amber-900/30 text-xs"
-            >
-              Move villager → <span className="text-amber-400">(M)</span>
-            </button>
           )}
         </div>
       )}

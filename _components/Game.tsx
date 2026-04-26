@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Canvas from './Canvas';
+import EntityPanel from './EntityPanel';
 import SelectionPanel from './SelectionPanel';
 import Sidebar from './Sidebar';
 import { advance } from '../_lib/tick';
@@ -291,6 +292,10 @@ export default function Game() {
     setSelection({ kind: 'move_source', q, r });
   }, []);
 
+  const handleSelectArmyTile = useCallback((q: number, r: number) => {
+    setSelection({ kind: 'tile', q, r });
+  }, []);
+
   const handleTileClick = useCallback(
     (q: number, r: number, shift: boolean) => {
       const cur = stateRef.current;
@@ -384,22 +389,27 @@ export default function Game() {
           width={VIEWPORT_WIDTH}
           onCancelSelection={handleCancelSelection}
           onRecruit={handleRecruit}
-          onStartMove={handleStartMove}
           onTrainVillager={handleTrainVillager}
           onDestroy={handleDestroy}
+        />
+        <EntityPanel
+          state={state}
+          selection={selection}
+          width={VIEWPORT_WIDTH}
+          onStartMove={handleStartMove}
+          onSelectBuild={handleSelectBuild}
+          onSendArmy={handleSendArmy}
+          onCancelArmy={handleCancelArmy}
         />
       </div>
       <Sidebar
         state={state}
-        selection={selection}
         paused={paused}
         speed={speed}
-        onSelectBuild={handleSelectBuild}
         onTogglePause={handleTogglePause}
         onSetSpeed={handleSetSpeed}
         onRestart={handleRestart}
-        onSendArmy={handleSendArmy}
-        onCancelArmy={handleCancelArmy}
+        onSelectArmyTile={handleSelectArmyTile}
       />
     </div>
   );

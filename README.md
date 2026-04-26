@@ -6,12 +6,13 @@ A small real-time hex-grid RTS-lite. Currently in early development — the core
 
 Route: `/projects/hex_kingdom`.
 
-- **Click a tile** to inspect it.
-- **Press `M` while a tile is selected**, then click another tile, to send one villager from the selected tile to the destination.
-- **Build menu** in the right sidebar (hotkeys: `H` house, `F` farm, `L` lumber, `Q` quarry, `I` iron mine, `B` barracks, `T` watchtower). Hold `Shift` while clicking a tile to keep placing.
+- **Click a tile** to inspect it. The Selection panel below the map describes the tile and any building on it.
+- When a player villager or army is on the selected tile, an **Entities panel** appears beneath the Selection panel with the move / build / send actions for those units.
+- **Press `M` while a tile is selected** (or click *Move villager* in the Entities panel), then click another tile, to send one villager from the selected tile to the destination.
+- **Build** by selecting a tile with one of your villagers on it, then clicking a building icon in the Entities panel — or by pressing its hotkey anywhere (`H` house, `F` farm, `L` lumber, `Q` quarry, `I` iron mine, `B` barracks, `T` watchtower) and clicking a valid tile. Hold `Shift` while clicking to keep placing. Hover an icon to see its full description.
 - **Train villagers** at the Town Hall (button in the selection panel).
 - **Recruit soldiers** at a Barracks (same place).
-- **Send armies** via the sidebar's Armies section.
+- **Send armies** from the Entities panel of the army's tile. The sidebar's Armies list is a clickable index — click an entry to jump to that army.
 - `Space` = pause/resume. `Esc` = clear selection. `WASD` / arrow keys = pan.
 
 ## Game model
@@ -37,8 +38,11 @@ hex_kingdom/
 ├── _components/
 │   ├── Game.tsx              Top-level state, rAF tick loop, save, hotkeys, selection routing
 │   ├── Canvas.tsx            Canvas-2D renderer, camera, click hit-testing, float-icons, toasts
-│   ├── SelectionPanel.tsx    Per-tile inspector + "Move villager →" action
-│   └── Sidebar.tsx           Resources, build menu, armies, win/lose
+│   ├── SelectionPanel.tsx    Per-tile inspector (terrain, building, recruit/train/destroy)
+│   ├── EntityPanel.tsx       Per-tile unit panel (Move, Build icon strip, army Send/Stop)
+│   ├── BuildingIcon.tsx      Inline-SVG icon per building type
+│   ├── Tooltip.tsx           Hover-tooltip wrapper (used by the build icons)
+│   └── Sidebar.tsx           Resources, armies index, win/lose
 └── _lib/
     ├── types.ts              GameState, Villager, BUILDING_SPEC, capacity & timing constants
     ├── hex.ts                Axial coords, neighbours, distance, A*
