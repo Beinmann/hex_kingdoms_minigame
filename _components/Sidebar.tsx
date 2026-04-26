@@ -1,6 +1,6 @@
 'use client';
 
-import type { GameState, Resources } from '../_lib/types';
+import type { GameState } from '../_lib/types';
 
 type Props = {
   state: GameState;
@@ -11,23 +11,6 @@ type Props = {
   onRestart: () => void;
   onSelectArmyTile: (q: number, r: number) => void;
 };
-
-function ResRow({ res }: { res: Resources }) {
-  const cell = (label: string, value: number) => (
-    <div className="flex items-baseline justify-between text-xs gap-2">
-      <span className="text-zinc-400">{label}</span>
-      <span className="font-mono tabular-nums text-zinc-100">{value}</span>
-    </div>
-  );
-  return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-      {cell('Food', res.food)}
-      {cell('Wood', res.wood)}
-      {cell('Stone', res.stone)}
-      {cell('Iron', res.iron)}
-    </div>
-  );
-}
 
 export default function Sidebar({
   state,
@@ -49,7 +32,6 @@ export default function Sidebar({
           <span>Tick {state.tick}</span>
           <span>{paused ? 'Paused' : `${speed}×`}</span>
         </div>
-        <ResRow res={state.player.resources} />
         <div className="flex items-baseline justify-between text-xs">
           <span className="text-zinc-400">Pop</span>
           <span className="font-mono tabular-nums text-zinc-100">

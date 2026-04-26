@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Canvas from './Canvas';
 import EntityPanel from './EntityPanel';
+import ResourceBar from './ResourceBar';
 import SelectionPanel from './SelectionPanel';
 import Sidebar from './Sidebar';
 import { advance } from '../_lib/tick';
@@ -470,6 +471,7 @@ export default function Game() {
   return (
     <div className="flex gap-6 items-start flex-wrap">
       <div className="space-y-4">
+        <ResourceBar resources={state.player.resources} />
         <div className="rounded-lg overflow-hidden bg-zinc-950 border border-zinc-800 inline-block">
           <Canvas
             state={state}
