@@ -20,7 +20,6 @@ import Tooltip from './Tooltip';
 type Props = {
   state: GameState;
   selection: Selection;
-  width: number;
   onStartMove: (q: number, r: number) => void;
   onMoveAll: (q: number, r: number) => void;
   onSelectBuild: (b: BuildingType) => void;
@@ -324,7 +323,6 @@ function ArmyRow({
 export default function EntityPanel({
   state,
   selection,
-  width,
   onStartMove,
   onMoveAll,
   onSelectBuild,
@@ -350,10 +348,7 @@ export default function EntityPanel({
   if (villagers.length === 0 && armies.length === 0) return null;
 
   return (
-    <section
-      className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-2 text-sm"
-      style={{ width }}
-    >
+    <section className="flex-1 min-w-0 rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-2 text-sm">
       <h3 className="font-semibold text-zinc-200">
         Entities <span className="text-zinc-500 text-xs font-normal font-mono">({q},{r})</span>
       </h3>

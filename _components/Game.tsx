@@ -479,25 +479,25 @@ export default function Game() {
             onTileRightClick={handleTileRightClick}
           />
         </div>
-        <SelectionPanel
-          state={state}
-          selection={selection}
-          width={VIEWPORT_WIDTH}
-          onCancelSelection={handleCancelSelection}
-          onRecruit={handleRecruit}
-          onTrainVillager={handleTrainVillager}
-          onDestroy={handleDestroy}
-        />
-        <EntityPanel
-          state={state}
-          selection={selection}
-          width={VIEWPORT_WIDTH}
-          onStartMove={handleStartMove}
-          onMoveAll={handleMoveAll}
-          onSelectBuild={handleSelectBuild}
-          onSendArmy={handleSendArmy}
-          onCancelArmy={handleCancelArmy}
-        />
+        <div className="flex gap-4 items-start" style={{ width: VIEWPORT_WIDTH }}>
+          <SelectionPanel
+            state={state}
+            selection={selection}
+            onCancelSelection={handleCancelSelection}
+            onRecruit={handleRecruit}
+            onTrainVillager={handleTrainVillager}
+            onDestroy={handleDestroy}
+          />
+          <EntityPanel
+            state={state}
+            selection={selection}
+            onStartMove={handleStartMove}
+            onMoveAll={handleMoveAll}
+            onSelectBuild={handleSelectBuild}
+            onSendArmy={handleSendArmy}
+            onCancelArmy={handleCancelArmy}
+          />
+        </div>
       </div>
       <Sidebar
         state={state}

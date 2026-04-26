@@ -18,7 +18,6 @@ import Tooltip from './Tooltip';
 type Props = {
   state: GameState;
   selection: Selection;
-  width: number;
   onCancelSelection: () => void;
   onRecruit: (barracksId: string) => void;
   onTrainVillager: (thId: string) => void;
@@ -36,7 +35,6 @@ function costString(cost: Partial<Resources>): string {
 export default function SelectionPanel({
   state,
   selection,
-  width,
   onCancelSelection,
   onRecruit,
   onTrainVillager,
@@ -62,10 +60,7 @@ export default function SelectionPanel({
   const tileCap = tileCoord ? capacityOf(state, tileCoord.q, tileCoord.r) : 0;
 
   return (
-    <section
-      className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-2 text-sm"
-      style={{ width }}
-    >
+    <section className="flex-1 min-w-0 rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-2 text-sm">
       <h3 className="font-semibold text-zinc-200">Selection</h3>
       {selection.kind === 'none' && (
         <p className="text-xs text-zinc-500">
