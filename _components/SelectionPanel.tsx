@@ -261,6 +261,7 @@ function ConstructionInfo({
           total={construction.ticksRequired}
           tickMs={tickMs}
           tick={state.tick}
+          step={builders}
         />
         <span className="text-zinc-500 font-mono tabular-nums w-10 text-right">{ticksLeft}t</span>
       </div>
@@ -303,13 +304,19 @@ function TrainingQueue({
         Queue <span className="text-zinc-400">({orders.length})</span>
       </div>
       <div className="space-y-1">
-        {orders.map((t) => {
+        {orders.map((t, i) => {
           const total = t.kind === 'villager' ? VILLAGER_TRAIN_TICKS : SOLDIER_TRAIN_TICKS;
           const done = Math.max(0, total - t.ticksLeft);
           return (
             <div key={t.id} className="flex items-center gap-2 text-[11px]">
               <span className="text-zinc-300 capitalize w-16 shrink-0">{t.kind}</span>
-              <SmoothBar progress={done} total={total} tickMs={tickMs} tick={state.tick} />
+              <SmoothBar
+                progress={done}
+                total={total}
+                tickMs={tickMs}
+                tick={state.tick}
+                step={i === 0 ? 1 : 0}
+              />
               <span className="text-zinc-500 font-mono tabular-nums w-10 text-right">
                 {Math.max(0, t.ticksLeft)}t
               </span>
@@ -326,22 +333,21 @@ function SmoothBar({
   total,
   tickMs,
   tick,
+  step,
 }: {
   progress: number;
   total: number;
   tickMs: number;
   tick: number;
+  step: number;
 }) {
-  // Lerp predictively (progress → progress + lastDelta) so the bar reaches
-  // 100% on the same tick the entry is removed, instead of trailing a tick.
-  const prevProgressRef = useRef(progress);
+  // Lerp predictively (progress → progress + step) so the bar reaches 100% on
+  // the same tick the entry is removed, and grows during the very first tick
+  // window. `step` is the expected per-tick increment supplied by the caller.
   const lastTickAtRef = useRef<number>(0);
-  const lastDeltaRef = useRef(0);
   const fillRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    lastDeltaRef.current = progress - prevProgressRef.current;
-    prevProgressRef.current = progress;
     lastTickAtRef.current = performance.now();
   }, [tick]);
 
@@ -351,7 +357,7 @@ function SmoothBar({
       if (lastTickAtRef.current === 0) lastTickAtRef.current = performance.now();
       const elapsed = performance.now() - lastTickAtRef.current;
       const t = tickMs > 0 ? Math.min(1, elapsed / tickMs) : 1;
-      const v = progress + lastDeltaRef.current * t;
+      const v = progress + step * t;
       if (fillRef.current) {
         const pct = total > 0 ? Math.max(0, Math.min(100, (v / total) * 100)) : 0;
         fillRef.current.style.width = `${pct}%`;
@@ -360,7 +366,7 @@ function SmoothBar({
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [progress, total, tickMs]);
+  }, [progress, total, tickMs, step]);
 
   const initialPct = total > 0 ? Math.max(0, Math.min(100, (progress / total) * 100)) : 0;
   return (
