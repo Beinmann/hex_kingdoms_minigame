@@ -77,10 +77,17 @@ export function occupantsAt(
 }
 
 export function pushToast(state: GameState, text: string): void {
+  const now = Date.now();
+  const last = state.notifications[state.notifications.length - 1];
+  if (last && last.text === text && now - last.addedAtMs < NOTIFICATION_TTL_MS) {
+    last.count = (last.count ?? 1) + 1;
+    last.addedAtMs = now;
+    return;
+  }
   state.notifications.push({
     id: `tst_${state.nextId++}`,
     text,
-    addedAtMs: Date.now(),
+    addedAtMs: now,
   });
 }
 

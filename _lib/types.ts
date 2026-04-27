@@ -100,6 +100,7 @@ export type Notification = {
   id: string;
   text: string;
   addedAtMs: number;
+  count?: number;
 };
 
 export type TrainingOrder = {

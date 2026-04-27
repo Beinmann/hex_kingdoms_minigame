@@ -760,6 +760,11 @@ export default function Canvas({ state, selection, tickMs, onTileClick, onTileRi
             }}
           >
             {n.text}
+            {n.count && n.count > 1 ? (
+              <span style={{ marginLeft: 6, color: '#fbbf24', fontFamily: 'monospace' }}>
+                ×{n.count}
+              </span>
+            ) : null}
           </div>
         ))}
       </div>
