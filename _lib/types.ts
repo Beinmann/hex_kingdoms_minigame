@@ -99,7 +99,7 @@ export type Construction = {
 export type Notification = {
   id: string;
   text: string;
-  tickAdded: number;
+  addedAtMs: number;
 };
 
 export type TrainingOrder = {
@@ -284,7 +284,11 @@ export const TILE_CAPACITY_BY_BUILDING: Partial<Record<BuildingType, number>> = 
   watchtower: 3,
 };
 
-export const NOTIFICATION_TTL_TICKS = 3;
+export const NOTIFICATION_TTL_MS = 5000;
+
+export function isImpassableTerrain(t: TileType): boolean {
+  return t === 'water' || t === 'forest' || t === 'hill' || t === 'mountain';
+}
 
 export const BUILD_TICKS_BY_TYPE: Record<BuildingType, number> = {
   townhall: 10,

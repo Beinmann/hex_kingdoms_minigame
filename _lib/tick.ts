@@ -6,6 +6,7 @@ import {
   BASE_VISION,
   BUILD_ABANDON_TICKS,
   BUILDING_SPEC,
+  isImpassableTerrain,
   type Army,
   type Building,
   type Construction,
@@ -196,7 +197,7 @@ export function newId(state: GameState, prefix: string): string {
 function isArmyBlocker(state: GameState, owner: Owner) {
   return (h: { q: number; r: number }): boolean => {
     const tile = state.tiles.find((t) => t.q === h.q && t.r === h.r);
-    if (!tile || tile.type === 'water') return true;
+    if (!tile || isImpassableTerrain(tile.type)) return true;
     const other = state.armies.find((a) => a.q === h.q && a.r === h.r && a.owner !== owner);
     return other !== undefined;
   };

@@ -20,6 +20,7 @@ import {
   VILLAGER_COST,
   VILLAGER_POP,
   VILLAGER_TRAIN_TICKS,
+  isImpassableTerrain,
   type BuildingType,
   type GameState,
   type Resources,
@@ -166,6 +167,17 @@ function destroyBuilding(state: GameState, buildingId: string): GameState {
 function sendArmy(state: GameState, armyId: string, q: number, r: number): GameState | null {
   const army = state.armies.find((a) => a.id === armyId);
   if (!army || army.owner !== 'player') return null;
+  const destTile = state.tiles.find((t) => t.q === q && t.r === r);
+  if (!destTile || destTile.type === 'water') {
+    const draft = JSON.parse(JSON.stringify(state)) as GameState;
+    pushToast(draft, 'Cannot send army to that tile.');
+    return draft;
+  }
+  if (isImpassableTerrain(destTile.type)) {
+    const draft = JSON.parse(JSON.stringify(state)) as GameState;
+    pushToast(draft, 'Armies cannot enter that terrain.');
+    return draft;
+  }
   const path = findPath(
     { q: army.q, r: army.r },
     { q, r },
@@ -174,11 +186,15 @@ function sendArmy(state: GameState, armyId: string, q: number, r: number): GameS
       height: state.mapHeight,
       isBlocked: (h) => {
         const tile = state.tiles.find((t) => t.q === h.q && t.r === h.r);
-        return !tile || tile.type === 'water';
+        return !tile || isImpassableTerrain(tile.type);
       },
     },
   );
-  if (!path) return null;
+  if (!path) {
+    const draft = JSON.parse(JSON.stringify(state)) as GameState;
+    pushToast(draft, 'No path to destination.');
+    return draft;
+  }
   return {
     ...state,
     armies: state.armies.map((a) => (a.id === armyId ? { ...a, path } : a)),
@@ -518,6 +534,16 @@ export default function Game() {
           e.preventDefault();
           setSelection({ kind: 'move_source', q: tileSel.q, r: tileSel.r, all: true });
           return;
+        }
+        if (k === 't') {
+          const armyHere = cur.armies.find(
+            (a) => a.q === tileSel.q && a.r === tileSel.r && a.owner === 'player',
+          );
+          if (armyHere) {
+            e.preventDefault();
+            setSelection({ kind: 'send', armyId: armyHere.id });
+            return;
+          }
         }
       }
       const t = HOTKEY_TO_BUILDING[k];

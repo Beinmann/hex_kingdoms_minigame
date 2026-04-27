@@ -22,6 +22,17 @@ function freeGrass(s: GameState) {
   )!;
 }
 
+// Force the tile at (q,r) to be grass so terrain rules don't reject move-command tests
+// that only care about queue/drain mechanics.
+function makeGrass(s: GameState, q: number, r: number): void {
+  const t = s.tiles.find((tt) => tt.q === q && tt.r === r);
+  if (t) {
+    t.type = 'grass';
+    delete t.pool;
+    delete t.maxPool;
+  }
+}
+
 describe('villager helpers', () => {
   it('starts with no villagers — they must be trained at the town hall', () => {
     const s = fresh();
@@ -100,6 +111,7 @@ describe('villager helpers', () => {
   it('issueMoveCommand queues a command when the source has a villager', () => {
     const s = fresh();
     const a = freeGrass(s);
+    makeGrass(s, a.q + 1, a.r);
     s.villagers.push(spawnVillager(s, 'player', a.q, a.r));
     const ok = issueMoveCommand(s, a.q, a.r, a.q + 1, a.r);
     expect(ok).toBe(true);
@@ -110,6 +122,7 @@ describe('villager helpers', () => {
   it('drainMoveQueues moves a villager logically to dest on first drain', () => {
     const s = fresh();
     const a = freeGrass(s);
+    makeGrass(s, a.q + 1, a.r);
     s.villagers.push(spawnVillager(s, 'player', a.q, a.r));
     issueMoveCommand(s, a.q, a.r, a.q + 1, a.r);
     drainMoveQueues(s);

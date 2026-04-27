@@ -8,6 +8,7 @@ import {
   VILLAGER_COST,
   VILLAGER_POP,
   VILLAGER_TRAIN_TICKS,
+  isImpassableTerrain,
   type Army,
   type BuildingType,
   type GameState,
@@ -230,7 +231,7 @@ function pathForArmy(state: GameState, from: Army, to: { q: number; r: number })
       height: state.mapHeight,
       isBlocked: (h) => {
         const tt = tileTypeAt(state, h.q, h.r);
-        return tt === null || tt === 'water';
+        return tt === null || isImpassableTerrain(tt);
       },
     },
   );

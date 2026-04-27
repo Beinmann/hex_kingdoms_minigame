@@ -11,7 +11,8 @@ Route: `/projects/hex_kingdom`.
 - **Move a villager**: with a tile selected, press `E` (or click *Move* in the Entities panel) and click a destination — or just **right-click** the destination directly. `R` (or *Move all*, or **Shift+right-click**) sends every non-busy villager from that tile.
 - **Build** by pressing the building's hotkey and clicking a valid tile, or by clicking an icon in the Entities panel: `Y` house, `X` farm, `C` lumber, `V` quarry, `B` iron mine, `N` barracks, `M` watchtower. Hold `Shift` while clicking to keep placing. Hover an icon for its full description.
 - **Building actions** (with the building's tile selected): `Q` = train villager (Town Hall) / recruit soldier (Barracks). `W` = destroy (any non-townhall). Each is also a square button in the Selection panel — hover for details.
-- **Send armies** from the Entities panel of the army's tile. The sidebar's Armies list is a clickable index — click an entry to jump to that army.
+- **Send armies** from the Entities panel of the army's tile, or with `T` while a tile that holds your army is selected. Then click a destination. The sidebar's Armies list is a clickable index — click an entry to jump to that army.
+- **Terrain**: villagers and armies cannot cross forest, hill, or mountain. Villagers still walk onto a forest/hill/mountain tile *automatically* when their lumber camp / quarry / iron mine sends them to gather, and they walk onto a construction site to build it. Right-clicking such a tile to settle a villager is rejected.
 - `Space` = pause/resume. `Esc` = clear selection. `WASD` / arrow keys = pan.
 
 ## Game model

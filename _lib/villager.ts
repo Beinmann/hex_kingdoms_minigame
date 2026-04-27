@@ -7,10 +7,11 @@ import {
   FARM_PRODUCE_INTERVAL_TICKS,
   GATHER_AMOUNT,
   GATHER_TICKS,
-  NOTIFICATION_TTL_TICKS,
+  NOTIFICATION_TTL_MS,
   TILE_CAPACITY_BY_BUILDING,
   TILE_CAPACITY_DEFAULT,
   WORK_PAUSE_TICKS,
+  isImpassableTerrain,
   type Building,
   type Construction,
   type GameState,
@@ -79,13 +80,14 @@ export function pushToast(state: GameState, text: string): void {
   state.notifications.push({
     id: `tst_${state.nextId++}`,
     text,
-    tickAdded: state.tick,
+    addedAtMs: Date.now(),
   });
 }
 
 export function pruneToasts(state: GameState): void {
+  const now = Date.now();
   state.notifications = state.notifications.filter(
-    (n) => state.tick - n.tickAdded < NOTIFICATION_TTL_TICKS,
+    (n) => now - n.addedAtMs < NOTIFICATION_TTL_MS,
   );
 }
 
@@ -116,7 +118,7 @@ function pathBetween(state: GameState, from: HexCoord, to: HexCoord): HexCoord[]
     height: state.mapHeight,
     isBlocked: (h) => {
       const t = tileAt(state, h.q, h.r);
-      return !t || t.type === 'water';
+      return !t || isImpassableTerrain(t.type);
     },
   });
 }
@@ -131,6 +133,17 @@ function computePath(
   if (fromQ === toQ && fromR === toR) return [];
   const p = pathBetween(state, { q: fromQ, r: fromR }, { q: toQ, r: toR });
   return p ?? [];
+}
+
+function isPathReachable(
+  state: GameState,
+  fromQ: number,
+  fromR: number,
+  toQ: number,
+  toR: number,
+): boolean {
+  if (fromQ === toQ && fromR === toR) return true;
+  return pathBetween(state, { q: fromQ, r: fromR }, { q: toQ, r: toR }) !== null;
 }
 
 function producedResource(building: Building): keyof Resources | null {
@@ -183,10 +196,24 @@ export function issueMoveCommand(
     if (owner === 'player') pushToast(state, 'Cannot move to that tile.');
     return false;
   }
+  // Forest/hill/mountain are off-limits to free movement; villagers only enter them
+  // automatically while gathering. Constructions are an explicit exception so the
+  // builder can reach the build site.
+  const hasConstruction = state.constructions.some(
+    (c) => c.q === destQ && c.r === destR && c.owner === owner,
+  );
+  if (!hasConstruction && isImpassableTerrain(destTile.type)) {
+    if (owner === 'player') pushToast(state, 'Villagers cannot enter that terrain.');
+    return false;
+  }
   const cap = capacityOf(state, destQ, destR);
   const occDest = occupantsAt(state, destQ, destR, owner);
   if (occDest >= cap) {
     if (owner === 'player') pushToast(state, 'Destination is full.');
+    return false;
+  }
+  if (!isPathReachable(state, srcQ, srcR, destQ, destR)) {
+    if (owner === 'player') pushToast(state, 'No path to destination.');
     return false;
   }
   const queues = state.tileQueuesByOwner[owner];
@@ -247,12 +274,17 @@ export function drainMoveQueues(state: GameState, owner: 'player' | 'rival' = 'p
         if (owner === 'player') pushToast(state, 'Move cancelled — destination became full.');
         continue;
       }
+      const path = computePath(state, candidate.q, candidate.r, cmd.destQ, cmd.destR);
+      if (path.length === 0 && (candidate.q !== cmd.destQ || candidate.r !== cmd.destR)) {
+        if (owner === 'player') pushToast(state, 'Move cancelled — no path to destination.');
+        continue;
+      }
       candidate.homeQ = cmd.destQ;
       candidate.homeR = cmd.destR;
       candidate.status = 'moving';
       candidate.carrying = null;
       candidate.pauseTicksLeft = 0;
-      candidate.path = computePath(state, candidate.q, candidate.r, cmd.destQ, cmd.destR);
+      candidate.path = path;
       if (candidate.q === cmd.destQ && candidate.r === cmd.destR) {
         onArrival(state, candidate);
       }
@@ -298,11 +330,17 @@ function beginWorkOutbound(state: GameState, v: Villager, building: Building): v
     v.path = [];
     return;
   }
+  if (v.q === source.q && v.r === source.r) {
+    v.status = 'work_gather';
+    v.pauseTicksLeft = GATHER_TICKS;
+    v.path = [];
+    return;
+  }
   v.status = 'work_outbound';
   v.path = computePath(state, v.q, v.r, source.q, source.r);
   if (v.path.length === 0) {
-    v.status = 'work_gather';
-    v.pauseTicksLeft = GATHER_TICKS;
+    v.status = 'work_pause';
+    v.pauseTicksLeft = WORK_PAUSE_TICKS;
   }
 }
 
@@ -389,10 +427,15 @@ export function stepVillager(state: GameState, v: Villager): void {
           v.pauseTicksLeft = WORK_PAUSE_TICKS;
           return;
         }
-        v.path = computePath(state, v.q, v.r, source.q, source.r);
-        if (v.path.length === 0) {
+        if (v.q === source.q && v.r === source.r) {
           v.status = 'work_gather';
           v.pauseTicksLeft = GATHER_TICKS;
+          return;
+        }
+        v.path = computePath(state, v.q, v.r, source.q, source.r);
+        if (v.path.length === 0) {
+          v.status = 'work_pause';
+          v.pauseTicksLeft = WORK_PAUSE_TICKS;
           return;
         }
       }

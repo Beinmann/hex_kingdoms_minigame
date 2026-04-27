@@ -300,13 +300,14 @@ function ArmyRow({
       <div className="flex gap-2">
         <button
           onClick={() => onSendArmy(army.id)}
-          className={`flex-1 px-2 py-1 rounded border text-xs ${
+          className={`flex-1 px-2 py-1 rounded border text-xs flex items-center justify-center gap-1 ${
             selection.kind === 'send' && selection.armyId === army.id
               ? 'border-amber-500 bg-amber-500/10 text-amber-200'
               : 'border-zinc-700 hover:bg-zinc-800'
           }`}
         >
-          Send
+          <span>Send</span>
+          <span className="text-[9px] leading-none text-amber-400">[T]</span>
         </button>
         {army.path.length > 0 && (
           <button
