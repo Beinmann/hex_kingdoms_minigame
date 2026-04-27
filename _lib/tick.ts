@@ -17,8 +17,7 @@ import {
 } from './types';
 
 function clone<T>(x: T): T {
-  if (typeof structuredClone === 'function') return structuredClone(x);
-  return JSON.parse(JSON.stringify(x)) as T;
+  return structuredClone(x);
 }
 
 function addResources(target: { food: number; wood: number; stone: number; iron: number }, src: Partial<{ food: number; wood: number; stone: number; iron: number }>): void {

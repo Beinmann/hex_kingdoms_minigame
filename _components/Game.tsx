@@ -60,11 +60,11 @@ function placeConstruction(
   if (!canAfford(state.player.resources, spec.cost)) return null;
   if (q === sourceQ && r === sourceR) return null;
   if (occupantsAt(state, sourceQ, sourceR, 'player') === 0) {
-    const draft = JSON.parse(JSON.stringify(state)) as GameState;
+    const draft = structuredClone(state);
     pushToast(draft, 'No villager on source tile.');
     return draft;
   }
-  const next = JSON.parse(JSON.stringify(state)) as GameState;
+  const next = structuredClone(state);
   pay(next.player.resources, spec.cost);
   next.constructions.push({
     id: `pc_${state.nextId}`,
@@ -84,7 +84,7 @@ function placeConstruction(
 function cancelConstructionFor(state: GameState, q: number, r: number): GameState | null {
   const c = state.constructions.find((x) => x.q === q && x.r === r && x.owner === 'player');
   if (!c) return null;
-  const next = JSON.parse(JSON.stringify(state)) as GameState;
+  const next = structuredClone(state);
   cancelConstructionById(next, c.id);
   return next;
 }
@@ -140,7 +140,7 @@ function trainVillagerAt(state: GameState, thId: string): GameState | null {
 function destroyBuilding(state: GameState, buildingId: string): GameState {
   const target = state.buildings.find((b) => b.id === buildingId);
   if (!target || target.owner !== 'player' || target.type === 'townhall') return state;
-  const next = JSON.parse(JSON.stringify(state)) as GameState;
+  const next = structuredClone(state);
   // Evict villagers whose home was this tile back to their physical position.
   for (const v of next.villagers) {
     if (v.homeQ === target.q && v.homeR === target.r) {
@@ -169,12 +169,12 @@ function sendArmy(state: GameState, armyId: string, q: number, r: number): GameS
   if (!army || army.owner !== 'player') return null;
   const destTile = state.tiles.find((t) => t.q === q && t.r === r);
   if (!destTile || destTile.type === 'water') {
-    const draft = JSON.parse(JSON.stringify(state)) as GameState;
+    const draft = structuredClone(state);
     pushToast(draft, 'Cannot send army to that tile.');
     return draft;
   }
   if (isImpassableTerrain(destTile.type)) {
-    const draft = JSON.parse(JSON.stringify(state)) as GameState;
+    const draft = structuredClone(state);
     pushToast(draft, 'Armies cannot enter that terrain.');
     return draft;
   }
@@ -191,7 +191,7 @@ function sendArmy(state: GameState, armyId: string, q: number, r: number): GameS
     },
   );
   if (!path) {
-    const draft = JSON.parse(JSON.stringify(state)) as GameState;
+    const draft = structuredClone(state);
     pushToast(draft, 'No path to destination.');
     return draft;
   }
@@ -215,7 +215,7 @@ function tryIssueMove(
   destQ: number,
   destR: number,
 ): GameState {
-  const next = JSON.parse(JSON.stringify(state)) as GameState;
+  const next = structuredClone(state);
   issueMoveCommand(next, srcQ, srcR, destQ, destR);
   return next;
 }
@@ -227,7 +227,7 @@ function tryIssueMoveAll(
   destQ: number,
   destR: number,
 ): GameState {
-  const next = JSON.parse(JSON.stringify(state)) as GameState;
+  const next = structuredClone(state);
   const nonBusy = next.villagers.filter(
     (v) =>
       v.owner === 'player' &&
