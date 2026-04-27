@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import {
   BUILD_ABANDON_TICKS,
   BUILDING_SPEC,
@@ -20,6 +21,7 @@ import Tooltip from './Tooltip';
 type Props = {
   state: GameState;
   selection: Selection;
+  tickMs: number;
   onCancelSelection: () => void;
   onRecruit: (barracksId: string) => void;
   onTrainVillager: (thId: string) => void;
@@ -38,6 +40,7 @@ function costString(cost: Partial<Resources>): string {
 export default function SelectionPanel({
   state,
   selection,
+  tickMs,
   onCancelSelection,
   onRecruit,
   onTrainVillager,
@@ -123,6 +126,7 @@ export default function SelectionPanel({
             <ConstructionInfo
               state={state}
               construction={selectedConstruction}
+              tickMs={tickMs}
               onCancel={onCancelConstruction}
             />
           )}
@@ -208,7 +212,11 @@ export default function SelectionPanel({
                       </Tooltip>
                     )}
                   </div>
-                  <TrainingQueue state={state} buildingId={selectedBuilding.id} />
+                  <TrainingQueue
+                    state={state}
+                    buildingId={selectedBuilding.id}
+                    tickMs={tickMs}
+                  />
                 </div>
               )}
             </div>
@@ -222,10 +230,12 @@ export default function SelectionPanel({
 function ConstructionInfo({
   state,
   construction,
+  tickMs,
   onCancel,
 }: {
   state: GameState;
   construction: Construction;
+  tickMs: number;
   onCancel: (q: number, r: number) => void;
 }) {
   const spec = BUILDING_SPEC[construction.type];
@@ -236,10 +246,6 @@ function ConstructionInfo({
       v.homeR === construction.r &&
       v.status === 'building',
   ).length;
-  const pct = Math.min(
-    100,
-    Math.max(0, (construction.progress / construction.ticksRequired) * 100),
-  );
   const ticksLeft = Math.max(0, construction.ticksRequired - construction.progress);
   const idleLeft = Math.max(0, BUILD_ABANDON_TICKS - construction.idleTicks);
   return (
@@ -250,9 +256,11 @@ function ConstructionInfo({
       </div>
       <div className="flex items-center gap-2 text-[11px]">
         <span className="text-zinc-400 w-16 shrink-0">Progress</span>
-        <div className="flex-1 h-1.5 rounded bg-zinc-800 overflow-hidden">
-          <div className="h-full bg-amber-500/70" style={{ width: `${pct}%` }} />
-        </div>
+        <SmoothBar
+          progress={construction.progress}
+          total={construction.ticksRequired}
+          tickMs={tickMs}
+        />
         <span className="text-zinc-500 font-mono tabular-nums w-10 text-right">{ticksLeft}t</span>
       </div>
       <div className="text-[11px] text-zinc-500">
@@ -277,7 +285,15 @@ function ConstructionInfo({
   );
 }
 
-function TrainingQueue({ state, buildingId }: { state: GameState; buildingId: string }) {
+function TrainingQueue({
+  state,
+  buildingId,
+  tickMs,
+}: {
+  state: GameState;
+  buildingId: string;
+  tickMs: number;
+}) {
   const orders = state.trainings.filter((t) => t.buildingId === buildingId);
   if (orders.length === 0) return null;
   return (
@@ -289,13 +305,10 @@ function TrainingQueue({ state, buildingId }: { state: GameState; buildingId: st
         {orders.map((t) => {
           const total = t.kind === 'villager' ? VILLAGER_TRAIN_TICKS : SOLDIER_TRAIN_TICKS;
           const done = Math.max(0, total - t.ticksLeft);
-          const pct = Math.min(100, Math.max(0, (done / total) * 100));
           return (
             <div key={t.id} className="flex items-center gap-2 text-[11px]">
               <span className="text-zinc-300 capitalize w-16 shrink-0">{t.kind}</span>
-              <div className="flex-1 h-1.5 rounded bg-zinc-800 overflow-hidden">
-                <div className="h-full bg-amber-500/70" style={{ width: `${pct}%` }} />
-              </div>
+              <SmoothBar progress={done} total={total} tickMs={tickMs} />
               <span className="text-zinc-500 font-mono tabular-nums w-10 text-right">
                 {Math.max(0, t.ticksLeft)}t
               </span>
@@ -303,6 +316,55 @@ function TrainingQueue({ state, buildingId }: { state: GameState; buildingId: st
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function SmoothBar({
+  progress,
+  total,
+  tickMs,
+}: {
+  progress: number;
+  total: number;
+  tickMs: number;
+}) {
+  const animFromRef = useRef(progress);
+  const lastTickAtRef = useRef<number>(0);
+  const displayedRef = useRef(progress);
+  const fillRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    animFromRef.current = displayedRef.current;
+    lastTickAtRef.current = performance.now();
+  }, [progress]);
+
+  useEffect(() => {
+    let raf = 0;
+    const loop = () => {
+      if (lastTickAtRef.current === 0) lastTickAtRef.current = performance.now();
+      const elapsed = performance.now() - lastTickAtRef.current;
+      const t = tickMs > 0 ? Math.min(1, elapsed / tickMs) : 1;
+      const v = animFromRef.current + (progress - animFromRef.current) * t;
+      displayedRef.current = v;
+      if (fillRef.current) {
+        const pct = total > 0 ? Math.max(0, Math.min(100, (v / total) * 100)) : 0;
+        fillRef.current.style.width = `${pct}%`;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [progress, total, tickMs]);
+
+  const initialPct = total > 0 ? Math.max(0, Math.min(100, (progress / total) * 100)) : 0;
+  return (
+    <div className="flex-1 h-1.5 rounded bg-zinc-800 overflow-hidden">
+      <div
+        ref={fillRef}
+        className="h-full bg-amber-500/70"
+        style={{ width: `${initialPct}%` }}
+      />
     </div>
   );
 }

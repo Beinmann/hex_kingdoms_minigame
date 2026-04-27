@@ -22,6 +22,7 @@ Route: `/projects/hex_kingdom`.
 - Default tile capacity is 3; town hall is 5; farm is 2; producers are 3.
 - A queued move auto-cancels with a toast if the destination becomes full before the villager's turn comes up.
 - Food cost only applies at training time; villagers don't consume food per tick.
+- Each producer building runs its own queue — only the front order trains; the rest wait in line. Different buildings train in parallel.
 - Win by destroying the rival town hall; lose by losing yours. The rival has its own villagers, picks producers based on its scarcest resource, defends its territory when your armies come close, and raids weakened buildings preferentially.
 
 ## Code architecture

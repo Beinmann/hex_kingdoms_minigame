@@ -93,7 +93,12 @@ function killVillagersOnHostileTiles(state: GameState): void {
 }
 
 function tickTrainings(state: GameState): void {
-  for (const t of state.trainings) t.ticksLeft -= 1;
+  const active = new Set<string>();
+  for (const t of state.trainings) {
+    if (active.has(t.buildingId)) continue;
+    active.add(t.buildingId);
+    t.ticksLeft -= 1;
+  }
 }
 
 function completeConstruction(state: GameState, c: Construction): void {

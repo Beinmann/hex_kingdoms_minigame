@@ -67,6 +67,8 @@ checkVictory
 - **Camera state, drag state, hover, float icons, and prev-positions are all `useRef` in Canvas.** None of them belong in `GameState` and none are saved.
 - **`stateRef` in `Game.tsx` is the source of truth for the rAF tick loop.** The `useState` mirror only exists so React re-renders. UI handlers that produce a new state must assign to *both* `stateRef.current` and `setState`.
 - **Fog of war: `state.visible` is current sight, `state.explored` is memory.** `recordExplored` (in `tick.ts`) overwrites the per-tile snapshot every tick a tile is visible — so re-seeing a tile updates memory, while losing sight freezes the last snapshot. Memory stores stationary things only (tile type, building, construction, lair); entities and HP/pool/progress bars are visible-only. When adding new stationary map state, extend `ExploredTile` and `recordExplored` together.
+- **Training is sequential per building.** `tickTrainings` only decrements the first order per `buildingId`; the rest sit at full ticks until their turn. Queue order = insertion order (always `push`). Movement queues are unaffected. When extending the queue model to research or other production, follow the same one-front-at-a-time pattern.
+- **Progress bars interpolate in real time.** `SmoothBar` in `SelectionPanel.tsx` lerps from the previously-displayed value to the current discrete `progress` over `tickMs`. Pass `tickMs={TICK_MS / speed}` to anything new that should animate smoothly between ticks.
 
 ## Verification
 

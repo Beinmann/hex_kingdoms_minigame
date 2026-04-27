@@ -553,6 +553,7 @@ export default function Game() {
           <SelectionPanel
             state={state}
             selection={selection}
+            tickMs={TICK_MS / speed}
             onCancelSelection={handleCancelSelection}
             onRecruit={handleRecruit}
             onTrainVillager={handleTrainVillager}
